@@ -105,6 +105,7 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
   const towerLevels: THREE.Mesh[] = []
   const foremanLamps: THREE.Mesh[] = []
   const signageBoards: THREE.Mesh[] = []
+  const cordonBarriers: THREE.Mesh[] = []
   const padDelivery: THREE.InstancedMesh = new THREE.InstancedMesh(
     theme.box(CITY.node.pads.px - 6, 0.25, CITY.node.pads.pz - 6),
     theme.neon(COLOR.harbor, 0.9),
@@ -141,6 +142,15 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
     fLamp.position.set(fAt[0], 10.2, fAt[2])
     district.add(fLamp)
     foremanLamps.push(fLamp)
+
+    // cordon barrier (M8): a striped bar across the gate while the district
+    // refuses new permits (Node.spec.unschedulable)
+    const bAt = ANCHOR[`node.${letter}.gate` as keyof typeof ANCHOR]
+    const barrier = new THREE.Mesh(theme.box(18, 1.6, 1.2), theme.neon(COLOR.warn, 1.5))
+    barrier.position.set(bAt[0], 2.2, bAt[2])
+    barrier.visible = false
+    district.add(barrier)
+    cordonBarriers.push(barrier)
 
     // kube-proxy signage box: the posted list that lags the directory
     const gAt = ANCHOR[`node.${letter}.signage` as keyof typeof ANCHOR]
@@ -414,6 +424,19 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       const backoff = c.reason === 'CrashLoopBackOff' || c.reason === 'ImagePullBackOff' || c.reason === 'ErrImagePull'
       const flicker = backoff ? 0.55 + 0.45 * Math.abs(Math.sin(slot.pulse * 3.2)) : 1
 
+      // M8: street truth vs the ledger — a powered-off district is dark no
+      // matter what the vault still says about its rows.
+      const districtDark = !(s.nodes[nodeIdx]?.powered ?? true)
+      // NoExecute countdown ring: armed pods blink faster as expiry nears.
+      const armedAt = s.evictions.get(pod.uid)
+      let countdownDim = 1
+      if (armedAt !== undefined) {
+        const total = Math.max(1, s.knobs.unreachableTolerationSec)
+        const remaining = Math.max(0, armedAt + total - s.now)
+        const urgency = 1 - remaining / total
+        countdownDim = 0.45 + 0.55 * Math.abs(Math.sin(t * (2 + urgency * 8)))
+      }
+
       // body
       const h = Math.max(0.06, slot.rise)
       _p.set(px, (BODY_H * h) / 2 + 0.5, pz)
@@ -428,6 +451,11 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
         else _c.setHex(COLOR.kubelet)
       }
       if (backoff) _c.multiplyScalar(flicker)
+      if (armedAt !== undefined) {
+        _c.setHex(COLOR.podTerminating)
+        _c.multiplyScalar(countdownDim)
+      }
+      if (districtDark) _c.multiplyScalar(0.22)
       bodies.setColorAt(i, _c)
 
       // windows: lit only while running
@@ -437,6 +465,7 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       _m.compose(_p, _q.identity(), _s)
       windows.setMatrixAt(i, _m)
       _c.setHex(pod.status.ready ? COLOR.podPending : COLOR.inkDim)
+      if (districtDark) _c.multiplyScalar(0.1)
       windows.setColorAt(i, _c)
 
       // door light: the Service-facing truth
@@ -447,6 +476,8 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       _c.setHex(
         terminating ? COLOR.podTerminating : pod.status.ready ? COLOR.podReady : c.state === 'running' ? COLOR.podPending : COLOR.inkDim,
       )
+      if (armedAt !== undefined) _c.setHex(COLOR.podTerminating).multiplyScalar(countdownDim)
+      if (districtDark) _c.multiplyScalar(0.15)
       doors.setColorAt(i, _c)
 
       // harbor delivery glow while this pod's image is the active pull
@@ -507,10 +538,22 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       const powered = node?.powered ?? false
       foremanLamps[n].visible = powered
       signageBoards[n].visible = powered
-      const cpu = node ? clamp01(node.allocated.cpuM / Math.max(1, node.allocatable.cpuM)) : 0
+      // Dead districts read dead: meters drop to zero regardless of the
+      // (stale) ledger — street truth, not paperwork.
+      const cpu = powered && node ? clamp01(node.allocated.cpuM / Math.max(1, node.allocatable.cpuM)) : 0
       substationNeedles[n].scale.x = Math.max(0.02, cpu)
-      const mem = node ? clamp01(node.allocated.memMi / Math.max(1, node.allocatable.memMi)) : 0
+      const mem = powered && node ? clamp01(node.allocated.memMi / Math.max(1, node.allocatable.memMi)) : 0
       towerLevels[n].position.y = 10.4 + mem * 6.4
+      // Cordon barrier follows Node.spec.unschedulable.
+      let unschedulable = false
+      for (const obj of s.etcd.objects.values()) {
+        if (obj.kind === 'Node' && obj.name === name) {
+          unschedulable = obj.spec.unschedulable === true
+          break
+        }
+      }
+      cordonBarriers[n].visible = unschedulable
+      if (unschedulable) cordonBarriers[n].position.y = 2.2 + 0.3 * Math.sin(t * 2)
     }
   }
 

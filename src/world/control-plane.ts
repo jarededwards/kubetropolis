@@ -533,11 +533,25 @@ export function createControlPlane(ctx: WorldContext): WorldModule {
     // map table lamp while a cycle is being worked
     cycleLamp.visible = s.sched.queue.length > 0 || s.sched.cycle !== undefined
 
-    // desks: queue depth + reconcile lamp
+    // desks: queue depth + reconcile lamp. The autoscaler desk is periodic —
+    // its "queue" is the paper spike of recommendations inside the
+    // stabilization window (M8), and its lamp burns while the HPA charter
+    // exists.
+    let hpaRecs = 0
+    let hpaCharter = false
+    for (const obj of s.etcd.objects.values()) {
+      if (obj.kind === 'HorizontalPodAutoscaler') {
+        hpaRecs = obj.status.recommendations.length
+        hpaCharter = true
+        break
+      }
+    }
     for (let d = 0; d < DESKS.length; d++) {
       const c = s.controllers[DESKS[d]]
-      queueMeshes[d].count = Math.min(QUEUE_CAP, c.workqueue.length)
-      deskLamps[d].material = c.current !== undefined ? lampOn : lampOff
+      const depth = DESKS[d] === 'hpa' ? hpaRecs : c.workqueue.length
+      queueMeshes[d].count = Math.min(QUEUE_CAP, depth)
+      deskLamps[d].material =
+        c.current !== undefined || (DESKS[d] === 'hpa' && hpaCharter) ? lampOn : lampOff
     }
   }
 
