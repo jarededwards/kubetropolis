@@ -24,8 +24,12 @@ issue tracking if hosting is chosen). Full plan:
       probe 96/96 pods ready @ GPU-equiv 60fps; 169/169 tests. Postgres TV
       geography deleted. Art-pass debts logged for M8 (water read, top-bar
       cramp, decal mirroring, 36-pad visual cap).
-- [ ] **M3 — Flagship trace** — the 12-stop narrated `kubectl apply -f pod.yaml`
-      journey; step/slow/live; claims spine enforcing.
+- [x] **M3 — Flagship trace** *(2026-08-03)* — 12-stop pod rail + 14-stop
+      deployment rail (trips-through-City-Hall counter as the lesson);
+      step/slow/live deterministic; ONE narration card; action picker with
+      YAML receipts + fidelity sentence; flows moving on the roads (couriers,
+      work orders, bind writes, pull trucks); claims-copy enforcement live;
+      201/201 tests; 12-shot verified strip.
 - [ ] **M4 — Workloads act** — scale/rolling-update/delete-pod actions;
       scenario runtime + steady-state, crashloop, oomkill, image-pull-storm;
       KNOB-AUDIT.md begins.
