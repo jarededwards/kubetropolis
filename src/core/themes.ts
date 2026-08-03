@@ -39,7 +39,7 @@ export const THEME_MODES: readonly ThemeMode[] = ['night', 'day', 'clock']
 export const DEFAULT_MODE: ThemeMode = 'day'
 
 /** localStorage key. Values are exactly the ThemeMode strings. */
-export const THEME_STORAGE_KEY = 'pgsimcity.theme'
+export const THEME_STORAGE_KEY = 'kubetropolis.theme'
 
 /* ---------------------------------------------------------------------------
  * NIGHT — the original city. Unchanged; this is still the default.

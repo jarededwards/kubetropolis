@@ -9,7 +9,7 @@ import { createCdpRunCleanup, installProcessCleanup } from './cdp-run.mjs'
 const url = process.argv[2] || 'http://127.0.0.1:5173/'
 const output = resolve(process.argv[3] || 'src/world/baked-light-data.ts')
 const port = Number(process.env.CDP_PORT || 9580)
-const gate = '/tmp/claude-1000/cdp-gate'
+const gate = process.env.CDP_GATE || '/tmp/kubetropolis-cdp-gate'
 const maxChromes = Number(process.env.CDP_MAX || 2)
 const staleMs = 10 * 60 * 1000
 let heldSlot = null
@@ -121,7 +121,7 @@ try {
   let ready = false
   for (let i = 0; i < 180; i++) {
     const result = await send('Runtime.evaluate', {
-      expression: 'Boolean(window.PGSIMCITY?.gfx?.scene)',
+      expression: 'Boolean(window.KUBETROPOLIS?.gfx?.scene)',
       returnByValue: true,
     })
     if (result.result.value === true) {
@@ -134,10 +134,10 @@ try {
 
   const evaluated = await send('Runtime.evaluate', {
     expression: `(async () => {
-      window.PGSIMCITY.sim.setKnob('paused', true);
-      window.PGSIMCITY.setThemeMode('day', { persist: false });
+      window.KUBETROPOLIS.sim.setKnob('paused', true);
+      window.KUBETROPOLIS.setThemeMode('day', { persist: false });
       const module = await import('/src/world/baked-light.ts?offline-bake');
-      return JSON.stringify(module.bakeSceneIndirect(window.PGSIMCITY.gfx.scene));
+      return JSON.stringify(module.bakeSceneIndirect(window.KUBETROPOLIS.gfx.scene));
     })()`,
     awaitPromise: true,
     returnByValue: true,

@@ -312,7 +312,7 @@ const helpExpression = `(async () => {
   }
   const containedY = (child, parent) =>
     child.top >= parent.top - 1 && child.bottom <= parent.bottom + 1
-  window.PGSIMCITY.bus.emit('ui:help', { open: true })
+  window.KUBETROPOLIS.bus.emit('ui:help', { open: true })
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   const body = document.querySelector('.help-body')
   const nav = document.querySelector('.help-nav')
@@ -362,13 +362,13 @@ const panelOverlayExpression = `(async () => {
     a.top < b.bottom - 0.5 &&
     a.bottom > b.top + 0.5
 
-  window.PGSIMCITY.rig.focusOn(
+  window.KUBETROPOLIS.rig.focusOn(
     { target: [-95, -24, -65], distance: 24, dir: [0, 1, 0.01] },
     { instant: true },
   )
   const panel = document.querySelector('.pgc-host--right .pgc-panel')
   panel.style.transition = 'none'
-  window.PGSIMCITY.bus.emit('select', { id: 'storage.datadir' })
+  window.KUBETROPOLIS.bus.emit('select', { id: 'storage.datadir' })
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
   const panelRect = panel.getBoundingClientRect()
@@ -381,7 +381,7 @@ const panelOverlayExpression = `(async () => {
       intersectsPanel: overlaps(element.getBoundingClientRect(), panelRect),
     }))
 
-  window.PGSIMCITY.bus.emit('select', { id: null })
+  window.KUBETROPOLIS.bus.emit('select', { id: null })
   panel.style.removeProperty('transition')
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   const zoomContext = document.querySelector('.zoom-context')
@@ -395,12 +395,12 @@ const panelOverlayExpression = `(async () => {
 
 const labelCameraExpression = (camera) => `(() => {
   document.querySelector('.tour-first__no')?.click()
-  window.PGSIMCITY.bus.emit('select', { id: null })
-  window.PGSIMCITY.bus.emit('ui:help', { open: false })
+  window.KUBETROPOLIS.bus.emit('select', { id: null })
+  window.KUBETROPOLIS.bus.emit('ui:help', { open: false })
   ${
     camera.distance === null
-      ? 'window.PGSIMCITY.rig.home(true)'
-      : `window.PGSIMCITY.rig.focusOn(
+      ? 'window.KUBETROPOLIS.rig.home(true)'
+      : `window.KUBETROPOLIS.rig.focusOn(
           { target: [-18, 0, -16], distance: ${camera.distance}, dir: [-200, 216, -326] },
           { instant: true },
         )`
@@ -408,7 +408,7 @@ const labelCameraExpression = (camera) => `(() => {
 })()`
 
 const labelAreaExpression = (theme, state) => `(() => {
-  window.PGSIMCITY.setThemeMode(${JSON.stringify(theme)})
+  window.KUBETROPOLIS.setThemeMode(${JSON.stringify(theme)})
 
   const chips = Array.from(document.querySelectorAll('.lbl__chip')).filter((chip) => {
     const host = chip.closest('.lbl')
@@ -464,7 +464,7 @@ const labelAreaExpression = (theme, state) => `(() => {
     theme: ${JSON.stringify(theme)},
     state: ${JSON.stringify(state)},
     viewport: [innerWidth, innerHeight],
-    cameraAltitude: Number(window.PGSIMCITY.rig.altitude.toFixed(1)),
+    cameraAltitude: Number(window.KUBETROPOLIS.rig.altitude.toFixed(1)),
     chips: chips.length,
     destinations,
     areaPercent: Number(((area / innerWidth / innerHeight) * 100).toFixed(3)),
@@ -616,7 +616,7 @@ try {
         failures.push(`B5 ${viewport.width}px: help section "${name}" is not directly reachable`)
       }
     }
-    await evaluate("window.PGSIMCITY.bus.emit('ui:help', { open: false })")
+    await evaluate("window.KUBETROPOLIS.bus.emit('ui:help', { open: false })")
 
     if (viewport.width === 390) {
       const panelOverlay = await evaluate(panelOverlayExpression)

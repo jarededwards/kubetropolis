@@ -49,7 +49,7 @@ interface StoredPreference {
   volume: number
 }
 
-const STORAGE_KEY = 'pgsimcity.audio'
+const STORAGE_KEY = 'kubetropolis.audio'
 const DEFAULT_VOLUME = 0.35
 const OPEN_FREQUENCY = 5600
 const SUBMERGED_FREQUENCY = 620

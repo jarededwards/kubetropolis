@@ -1,3 +1,7 @@
+/* Derived from PGSimCity tools/cdp-profile.mjs @ 6d2c854 (Apache-2.0, © 2026
+ * Nikolay Samokhvalov). Modified for Kubetropolis: profile root renamed and
+ * profileIsInUse gains a `ps` fallback for hosts without /proc (macOS). */
+import { execFileSync } from 'node:child_process'
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 export const PROFILE_STALE_MS = 10 * 60 * 1000
-export const DEFAULT_PROFILE_ROOT = join(tmpdir(), 'pgsimcity-cdp-profiles')
+export const DEFAULT_PROFILE_ROOT = join(tmpdir(), 'kubetropolis-cdp-profiles')
 
 const OWNER_FILE = '.pgsimcity-cdp-owner.json'
 const MANAGED_PROFILE = /^profile-\d+-\d+-[A-Za-z0-9]+$/
@@ -42,7 +46,19 @@ export function profileIsInUse(profilePath) {
   try {
     processes = readdirSync('/proc')
   } catch {
-    return false
+    // No /proc on this host (macOS): fall back to a ps argument scan with the
+    // same flattened-argv tolerance as the /proc path below.
+    const profileArgument = `--user-data-dir=${profilePath}`
+    try {
+      const out = execFileSync('ps', ['-axo', 'args='], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        maxBuffer: 16 * 1024 * 1024,
+      })
+      return out.split('\n').some((line) => line.split(/\s+/).includes(profileArgument))
+    } catch {
+      return false
+    }
   }
 
   const profileArgument = `--user-data-dir=${profilePath}`

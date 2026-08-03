@@ -18,7 +18,7 @@ import { createCdpRunCleanup, installProcessCleanup } from './cdp-run.mjs'
  * The gate is a directory-based semaphore: mkdir is atomic on POSIX, so
  * whoever creates slot N owns it. Stale slots (a killed run) are reaped by age.
  * ------------------------------------------------------------------------- */
-const GATE = '/tmp/claude-1000/cdp-gate'
+const GATE = process.env.CDP_GATE || '/tmp/kubetropolis-cdp-gate'
 const MAX_CHROMES = Number(process.env.CDP_MAX || 2)
 const SLOT_STALE_MS = 10 * 60 * 1000
 
@@ -225,18 +225,18 @@ const probe = await send('Runtime.evaluate', {
     status:document.getElementById('boot-status')?.textContent,
     canvas:!!document.querySelector('#canvas-root canvas'),
     labels:document.getElementById('labels-root')?.querySelectorAll('div').length ?? -1,
-    components:(window.PGSIMCITY?.registry?.all()||[]).length,
-    walkOn: !!window.PGSIMCITY?.walk?.enabled,
-    grounded: !!window.PGSIMCITY?.walk?.grounded,
-    eyeY: Number((window.PGSIMCITY?.gfx?.camera?.position?.y ?? -1).toFixed(2)),
-    boxes: window.PGSIMCITY?.collision?.boxCount,
-    fps:Math.round(window.PGSIMCITY?.gfx?.fps ?? -1),
-    quality:window.PGSIMCITY?.gfx?.quality?.level,
-    simT:Math.round(window.PGSIMCITY?.sim?.state?.t ?? -1),
-    hitPct:Number((window.PGSIMCITY?.sim?.state?.stats?.cacheHitPct ?? -1).toFixed(1)),
-    ckptCount:window.PGSIMCITY?.sim?.state?.checkpoint?.count,
-    vacRuns:window.PGSIMCITY?.sim?.state?.autovac?.totalRuns,
-    backends:(window.PGSIMCITY?.sim?.state?.backends||[]).filter(b=>b.active).length,
+    components:(window.KUBETROPOLIS?.registry?.all()||[]).length,
+    walkOn: !!window.KUBETROPOLIS?.walk?.enabled,
+    grounded: !!window.KUBETROPOLIS?.walk?.grounded,
+    eyeY: Number((window.KUBETROPOLIS?.gfx?.camera?.position?.y ?? -1).toFixed(2)),
+    boxes: window.KUBETROPOLIS?.collision?.boxCount,
+    fps:Math.round(window.KUBETROPOLIS?.gfx?.fps ?? -1),
+    quality:window.KUBETROPOLIS?.gfx?.quality?.level,
+    simT:Math.round(window.KUBETROPOLIS?.sim?.state?.t ?? -1),
+    hitPct:Number((window.KUBETROPOLIS?.sim?.state?.stats?.cacheHitPct ?? -1).toFixed(1)),
+    ckptCount:window.KUBETROPOLIS?.sim?.state?.checkpoint?.count,
+    vacRuns:window.KUBETROPOLIS?.sim?.state?.autovac?.totalRuns,
+    backends:(window.KUBETROPOLIS?.sim?.state?.backends||[]).filter(b=>b.active).length,
   })`, returnByValue: true,
 })
 console.log('=== PROBE ===\n' + probe.result.value)

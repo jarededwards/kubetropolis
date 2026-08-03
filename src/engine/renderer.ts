@@ -363,7 +363,7 @@ export function createRenderer(container: HTMLElement, bus: Bus): RendererApi {
     } finally {
       parent.add(sky)
     }
-    nextTarget.texture.name = `pgsimcity.environment.${targetKey}`
+    nextTarget.texture.name = `kubetropolis.environment.${targetKey}`
     const previous = environmentTarget
     environmentTarget = nextTarget
     environmentKey = targetKey
