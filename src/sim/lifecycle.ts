@@ -110,8 +110,8 @@ export function stepTaintManager(state: SimState): void {
     if (n.spec.taints.some((t) => t.key === UNREACHABLE && t.effect === 'NoExecute')) dead.add(n.name)
   }
 
-  // Expire or cancel armed countdowns.
-  for (const [uid, at] of [...state.evictions.entries()]) {
+  // Expire or cancel armed countdowns. Expiry = armedAt + the LIVE dial.
+  for (const [uid, armedAt] of [...state.evictions.entries()]) {
     const pod = state.etcd.objects.get(uid) as PodObj | undefined
     if (!pod || !pod.spec.nodeName || !dead.has(pod.spec.nodeName) || pod.deletionTimestamp !== undefined) {
       state.evictions.delete(uid)
@@ -120,7 +120,11 @@ export function stepTaintManager(state: SimState): void {
       }
       continue
     }
-    if (state.now >= at) {
+    const pod0 = state.etcd.objects.get(uid) as PodObj | undefined
+    const tolerated0 = pod0?.spec.tolerations.some(
+      (t) => t.key === UNREACHABLE && t.effect === 'NoExecute',
+    )
+    if (state.now >= armedAt + (tolerated0 ? state.knobs.unreachableTolerationSec : 0)) {
       state.evictions.delete(uid)
       // One NodeLost write removes the row — no kubelet is alive to run the
       // grace dance, and no budget applies (claims: taint.eviction).
@@ -150,7 +154,7 @@ export function stepTaintManager(state: SimState): void {
       (t) => t.key === UNREACHABLE && t.effect === 'NoExecute',
     )
     const seconds = tolerated ? state.knobs.unreachableTolerationSec : 0
-    state.evictions.set(pod.uid, state.now + seconds)
+    state.evictions.set(pod.uid, state.now)
     pushEvent(
       state,
       'Warning',

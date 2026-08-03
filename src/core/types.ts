@@ -929,6 +929,12 @@ export interface UncordonNodeCommand {
   node: string
 }
 
+/** kubectl delete --force --grace-period=0: remove the row without the foreman. */
+export interface ForceDeletePodCommand {
+  kind: 'ForceDeletePod'
+  name: string
+}
+
 export type Command =
   | ApplyPodCommand
   | ApplyDeploymentCommand
@@ -944,6 +950,7 @@ export type Command =
   | SetNodePowerCommand
   | DrainNodeCommand
   | UncordonNodeCommand
+  | ForceDeletePodCommand
 
 /* ---------------------------------------------------------------------------
  * Knobs — every one has a visible city effect (KNOB-AUDIT discipline).
@@ -1084,8 +1091,10 @@ export interface SimState {
   drains: DrainState[]
   /**
    * NoExecute countdowns armed by the taint manager (M8): pod uid → the model
-   * second its toleration expires. World renders remaining time as the
-   * countdown ring; recovery cancels the entry.
+   * second the countdown was ARMED. Expiry is computed against the live
+   * unreachableTolerationSec dial, so shortening the toleration acts on
+   * clocks already running. World renders remaining time as the countdown
+   * ring; recovery cancels the entry.
    */
   evictions: Map<Uid, number>
   /** RS keys to re-enqueue after a quota rejection (retry with backoff). */
@@ -1655,6 +1664,8 @@ export interface ScenarioDef {
   actionAt?: [number, ActionKind][]
   /** scheduled knob changes (the PG at-beat analog): [atSecond, knobs] */
   knobsAt?: [number, Partial<Knobs>][]
+  /** scheduled raw commands (when no canned action fits, e.g. scale 12) */
+  commandsAt?: [number, Command][]
   /** narration beats: [atSecond, title, body] */
   beats?: [number, string, string][]
   /** A non-modal operator decision shown only after its instrument threshold. */
@@ -1668,10 +1679,12 @@ export interface ScenarioChoice {
   id: ScenarioChoiceId
   label: string
   hint: string
-  /** declarative consequence — knobs and/or one command, plus the narrated line */
+  /** declarative consequence — knobs and/or commands, plus the narrated line */
   effect: {
     knobs?: Partial<Knobs>
     command?: Command
+    /** live-state commands (e.g. force-delete every pod on the dead district) */
+    commandsFor?(state: SimState): Command[]
     consequence: string
   }
 }
@@ -1684,6 +1697,7 @@ export interface ScenarioRunState {
   setupDone: boolean
   actionIdx: number
   knobIdx: number
+  commandIdx: number
   beatIdx: number
   beat?: { title: string; body: string; at: number }
   decisionAvailable: boolean

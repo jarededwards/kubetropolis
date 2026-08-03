@@ -252,6 +252,238 @@ export const SCENARIOS: readonly ScenarioDef[] = [
         + 'pass again.'],
     ],
   },
+  {
+    id: 'node-notready',
+    name: 'Node NotReady',
+    blurb: 'A district goes dark. Two clocks start; both are the lesson.',
+    icon: '◼',
+    knobs: {},
+    focus: 'node.b.gate',
+    duration: 0,
+    ensureDeployment: true,
+    knobsAt: [[5, { chaosNodeFail: 'node-b' }]],
+    beats: [
+      [0, 'Silence is data',
+        'We cut power to node-b in five seconds. Then watch how long nothing happens: networks '
+        + 'blip far more often than districts die, and City Hall knows it.'],
+      [58, 'NotReady, tainted',
+        `No heartbeat for ${CLAIM_VALUES.nodeMonitor.graceSeconds} model seconds — the lifecycle desk marks the district `
+        + 'Unknown and posts the unreachable taints. Now every building carries a countdown: the '
+        + `${CLAIM_VALUES.tolerations.defaultSeconds}-second toleration it never asked for.`],
+      [320, 'The rebuild',
+        'Countdowns expire, rows are removed with NodeLost, and the contract rebuilds in live '
+        + 'districts. Check the substations absorbing the load. Nothing here needed you.'],
+    ],
+    decision: {
+      revealAt: 90,
+      choices: [
+        {
+          id: 'wait',
+          label: 'Wait it out',
+          hint: 'Honest: five minutes. This is the default for a reason',
+          effect: {
+            consequence:
+              'The countdowns run their course. False alarms cost nothing this way; real failures '
+              + 'cost five patient minutes.',
+          },
+        },
+        {
+          id: 'force-delete',
+          label: 'kubectl delete --force',
+          hint: 'Remove the rows without the foreman\'s confirmation',
+          effect: {
+            commandsFor: (state) => {
+              const out = []
+              for (const o of state.etcd.objects.values()) {
+                if (o.kind === 'Pod' && o.spec.nodeName === 'node-b' && !o.deletionTimestamp) {
+                  out.push(samples.forceDelete(o.name))
+                }
+              }
+              return out
+            },
+            consequence:
+              'The rows vanish and replacements file immediately. If those buildings held state, '
+              + 'reality just forked — the force flag is a promise that they did not.',
+          },
+        },
+        {
+          id: 'shorten-toleration',
+          label: 'Shorten the toleration',
+          hint: 'Tune the dial down to 30 — faster failover, twitchier false alarms',
+          effect: {
+            knobs: { unreachableTolerationSec: 30 },
+            consequence:
+              'The running countdowns shrink to thirty seconds. Every future network blip now '
+              + 'costs a rebuild — you traded patience for speed, cluster-wide.',
+          },
+        },
+      ],
+    },
+  },
+  {
+    id: 'pdb-blocked-drain',
+    name: 'PDB-blocked drain',
+    blurb: 'Maintenance meets a promise you made to stay available.',
+    icon: '⛔',
+    knobs: { pdbEnabled: true, pdbMinAvailable: 3 },
+    focus: 'node.b.gate',
+    duration: 0,
+    ensureDeployment: true,
+    actionAt: [[12, 'drain-node']],
+    beats: [
+      [0, 'The budget first',
+        'A disruption budget is filed: keep three shopfronts available. Remember that number.'],
+      [12, 'Cordon, then paperwork',
+        'The district refuses new permits, and the drain begins — eviction filings, one building '
+        + 'at a time. A drain is paperwork, not a bulldozer.'],
+      [40, `${CLAIM_VALUES.disruption.evictionBlockedStatus}, politely`,
+        'Three must stay available and three are all we have. Every filing comes back DENIED '
+        + 'along the eviction road, and the drain retries with backoff. Nothing is broken: two '
+        + 'true statements cannot both be satisfied yet.'],
+    ],
+    decision: {
+      revealAt: 75,
+      choices: [
+        {
+          id: 'scale-first',
+          label: 'Scale up first',
+          hint: 'Add capacity elsewhere; the budget frees itself',
+          effect: {
+            command: samples.scale(5),
+            consequence:
+              'New buildings rise in open districts, the ready count clears the budget, and the '
+              + 'stalled drain\'s next retry goes through. Capacity was the answer, not force.',
+          },
+        },
+        {
+          id: 'override',
+          label: 'Delete the pods directly',
+          hint: 'PDB guards evictions, not deletes',
+          effect: {
+            commandsFor: (state) => {
+              const out = []
+              for (const o of state.etcd.objects.values()) {
+                if (o.kind === 'Pod' && o.spec.nodeName === 'node-b' && !o.deletionTimestamp) {
+                  out.push(samples.deletePod(o.name))
+                }
+              }
+              return out
+            },
+            consequence:
+              'It works — the budget never even sees a delete. And it is exactly the promise you '
+              + 'break: the availability floor you filed is now fiction.',
+          },
+        },
+        {
+          id: 'wait',
+          label: 'Keep retrying',
+          hint: 'Correct whenever the budget frees',
+          effect: {
+            consequence:
+              'The drain keeps filing on its backoff, forever. The moment anything frees the '
+              + 'budget — a scale-up, a recovered door — it completes without you.',
+          },
+        },
+      ],
+    },
+  },
+  {
+    id: 'hpa-flap',
+    name: 'Rush hour',
+    blurb: 'Traffic doubles, then halves. The window and the deadband earn their keep.',
+    icon: '↗',
+    knobs: { hpaEnabled: true, hpaTargetCpuPct: 50, hpaMax: 10, reqPerSec: 220 },
+    focus: 'inspectors.office',
+    duration: 480,
+    ensureDeployment: true,
+    ensureService: true,
+    knobsAt: [[140, { reqPerSec: 40 }]],
+    beats: [
+      [0, 'One division, every fifteen seconds',
+        `The desk computes usage over target every ${CLAIM_VALUES.hpa.syncSeconds} model seconds and edits exactly one `
+        + 'number on the Deployment. That is everything it is permitted to do.'],
+      [60, 'The ratio crossed the deadband',
+        `Past ±${CLAIM_VALUES.hpa.tolerancePct}% of target, the desk writes: desired = ceil(current × usage/target). `
+        + 'Watch the city turn one edit into buildings.'],
+      [140, 'Traffic halves',
+        'And no demolition follows. The desk acts on the HIGHEST recommendation of the last '
+        + `${CLAIM_VALUES.hpa.stabilizationSeconds} model seconds — flapping is more expensive than patience.`],
+      [440, 'The window closes',
+        'Only now, with the whole window quiet, does the lower number get written. Scale-up is '
+        + 'eager; scale-down is deliberately slow.'],
+    ],
+  },
+  {
+    id: 'etcd-slow',
+    name: 'The ledger limps',
+    blurb: 'The vault slows and the leader flaps. Notice what still works.',
+    icon: '≋',
+    knobs: { chaosEtcdSlow: true, chaosLeaderFlap: true, reqPerSec: 120 },
+    focus: 'records.vault',
+    duration: 120,
+    ensureDeployment: true,
+    ensureService: true,
+    beats: [
+      [0, 'Fsync at 500 model-ms',
+        'Every stamp in the vault drags, and elections keep stealing the pen. Watch the permit '
+        + 'hall queue and the couriers\' lag climb.'],
+      [40, 'Try to change anything',
+        'Scale, delete, apply — paperwork piles at the desk. The control plane is a database '
+        + 'application, and its database is sick.'],
+      [85, 'The city still serves',
+        'Cars still reach open doors: the junction and every district signage run on PROGRAMMED '
+        + 'copies, not live ledger reads. A cluster that cannot change can still work — until '
+        + 'something else breaks.'],
+    ],
+  },
+  {
+    id: 'quota-exhausted',
+    name: 'Quota exhausted',
+    blurb: 'The neighborhood has a permit cap. The desk does not sulk.',
+    icon: '#',
+    knobs: { chaosQuotaLow: true },
+    focus: 'cityhall.permitdesk',
+    duration: 0,
+    ensureDeployment: true,
+    commandsAt: [[10, { kind: 'Scale', deployment: 'shopfront', replicas: 12 }]],
+    beats: [
+      [0, 'Eight permits for shops',
+        'The quota kiosk counts objects, not intentions. Eight is the cap; three are standing.'],
+      [22, 'FailedCreate',
+        'You asked for twelve. The ReplicaSet desk files permit nine and gets it back stamped — '
+        + 'and files again on its backoff, forever. Inspectors do not sulk.'],
+      [70, 'Desired 12, running 8',
+        'The Deployment reports the gap honestly in status. Nothing is wrong except arithmetic. '
+        + 'Raise the cap, or want less.'],
+    ],
+    decision: {
+      revealAt: 90,
+      choices: [
+        {
+          id: 'raise-quota',
+          label: 'Lift the cap',
+          hint: 'Capacity planning by decree',
+          effect: {
+            knobs: { chaosQuotaLow: false },
+            consequence:
+              'The kiosk closes, the desk\'s next retry clears, and the remaining four permits '
+              + 'file in one breath. The gap was policy, not physics.',
+          },
+        },
+        {
+          id: 'lower-replicas',
+          label: 'Want less',
+          hint: 'Match the ask to the cap',
+          effect: {
+            command: samples.scale(8),
+            consequence:
+              'Desired equals possible; the FailedCreate filings stop. The quota did its job: it '
+              + 'made you decide on purpose.',
+          },
+        },
+      ],
+    },
+  },
 ]
 
 export function scenarioById(id: string): ScenarioDef | undefined {
@@ -271,6 +503,7 @@ export function startScenario(state: SimState, id: string): void {
     knobsBefore: { ...state.knobs },
     setupDone: false,
     actionIdx: 0,
+    commandIdx: 0,
     knobIdx: 0,
     beatIdx: 0,
     decisionAvailable: false,
@@ -305,6 +538,7 @@ export function applyScenarioChoice(
   sr.consequence = choice.effect.consequence
   if (choice.effect.knobs) applyKnobs(state, choice.effect.knobs)
   if (choice.effect.command) run(choice.effect.command)
+  if (choice.effect.commandsFor) for (const cmd of choice.effect.commandsFor(state)) run(cmd)
   pushEvent(state, 'Normal', 'ScenarioChoice', sr.id, `${choice.label} — ${choice.effect.consequence}`)
 }
 
@@ -335,6 +569,13 @@ export function stepScenario(state: SimState, run: (cmd: Command) => void): void
   while (sr.knobIdx < knobChanges.length && knobChanges[sr.knobIdx][0] <= t) {
     applyKnobs(state, knobChanges[sr.knobIdx][1])
     sr.knobIdx += 1
+  }
+
+  const commands = def.commandsAt ?? []
+  while (sr.commandIdx < commands.length && commands[sr.commandIdx][0] <= t) {
+    const [, cmd] = commands[sr.commandIdx]
+    sr.commandIdx += 1
+    run(cmd)
   }
 
   const actions = def.actionAt ?? []

@@ -11,6 +11,7 @@ import type {
   ChaosNodeTarget,
   DeletePodCommand,
   DrainNodeCommand,
+  ForceDeletePodCommand,
   RollbackImageCommand,
   ScaleCommand,
   SetImageCommand,
@@ -63,6 +64,9 @@ export const samples = {
   },
   drain(node = 'node-b'): DrainNodeCommand {
     return { kind: 'DrainNode', node }
+  },
+  forceDelete(name: string): ForceDeletePodCommand {
+    return { kind: 'ForceDeletePod', name }
   },
   uncordon(node = 'node-b'): UncordonNodeCommand {
     return { kind: 'UncordonNode', node }

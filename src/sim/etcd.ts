@@ -34,6 +34,17 @@ export function proposeWrite(state: SimState, req: ApiRequest): void {
 export function stepEtcdCommits(state: SimState): ChangeRecord[] {
   const etcd = state.etcd
   const committed: ChangeRecord[] = []
+  // Leader flap (M8 chaos): deterministic election windows — every 25 model
+  // seconds a 4-second election steals the pen. No leader, no commits; the
+  // queue holds, the order holds. The data plane never notices (etcd-slow
+  // scenario: the city still serves).
+  if (state.knobs.chaosLeaderFlap) {
+    const cycle = Math.floor(state.now / 25)
+    if (state.now - cycle * 25 < 4) {
+      etcd.leader = (cycle % 3) as 0 | 1 | 2
+      return committed
+    }
+  }
   while (etcd.proposals.length > 0 && etcd.proposals[0].readyAt <= state.now) {
     const p = etcd.proposals.shift()!
     const rec = applyWrite(state, p.req)
