@@ -51,7 +51,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       nextCompactionAt: 300,
     },
     api: { inflight: [], rejected: 0, watchers: [] },
-    sched: { queue: [], backoff: [], scheduled: 0 },
+    sched: { queue: [], backoff: [], scheduled: 0, assumed: new Map() },
     controllers: {
       deployment: mkController('deployment'),
       replicaset: mkController('replicaset'),

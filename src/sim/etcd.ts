@@ -55,14 +55,27 @@ function applyWrite(state: SimState, req: ApiRequest): ChangeRecord | null {
     return record(state, 'put', obj.uid, obj.kind, 'ADDED')
   }
 
-  if (req.verb === 'update') {
-    // Stale-object tolerance: last write wins on the same uid; a missing uid
-    // means the object was deleted while this write was in flight — drop it.
-    if (!etcd.objects.has(obj.uid)) return null
+  if (req.verb === 'update' || req.verb === 'updateStatus') {
+    // A missing uid means the object was deleted while this write was in
+    // flight — drop it. Merge semantics stand in for the status subresource +
+    // optimistic concurrency: an in-flight clone can never resurrect fields
+    // another writer owns, and deletion is irreversible.
+    const current = etcd.objects.get(obj.uid)
+    if (!current || current.kind !== obj.kind) return null
+    const base = structuredClone(current)
+    if (req.verb === 'update') {
+      ;(base as { spec: unknown }).spec = structuredClone((obj as { spec: unknown }).spec)
+      base.labels = { ...obj.labels }
+      base.generation = obj.generation
+    } else if ('status' in obj) {
+      ;(base as { status: unknown }).status = structuredClone((obj as { status: unknown }).status)
+    }
+    // deletionTimestamp only ever moves from unset to set, via the delete verb
+    base.deletionTimestamp = current.deletionTimestamp
     etcd.revision += 1
-    obj.resourceVersion = etcd.revision
-    etcd.objects.set(obj.uid, obj)
-    return record(state, 'put', obj.uid, obj.kind, 'MODIFIED')
+    base.resourceVersion = etcd.revision
+    etcd.objects.set(base.uid, base)
+    return record(state, 'put', base.uid, base.kind, 'MODIFIED')
   }
 
   if (req.verb === 'delete') {

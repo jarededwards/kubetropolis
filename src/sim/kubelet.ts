@@ -113,6 +113,9 @@ function syncPod(state: SimState, node: NodeSim, pod: PodObj): void {
 
 /** waiting → (pull?) → creating; publishes each transition as a status write. */
 function startupPath(state: SimState, node: NodeSim, pod: PodObj): void {
+  // A second delivery can arrive before our own status write commits; the
+  // local runtime, not the published state, is the re-entrancy guard.
+  if (runtimeFor(node, pod).creatingUntil !== undefined) return
   const image = pod.spec.image
   const mustPull = pod.spec.imagePullPolicy === 'Always' || !node.imageCache.has(image)
   if (mustPull) {
@@ -312,6 +315,6 @@ function publishStatus(
 ): void {
   const next = clone(pod)
   mutate(next)
-  submit(state, 'update', next, `kubelet.${node.id}`)
+  submit(state, 'updateStatus', next, `kubelet.${node.id}`)
 }
 

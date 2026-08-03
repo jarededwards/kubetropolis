@@ -25,8 +25,17 @@ export function reconcileReplicaSet(state: SimState, uid: Uid): void {
 
   const ctl = state.controllers.replicaset
   const children = podsOwnedBy(state, rs.uid).filter((p) => !p.deletionTimestamp)
-  const expect = ctl.expect.get(rs.uid) ?? { creates: 0, deletes: 0 }
-  const effective = children.length + expect.creates - expect.deletes
+
+  // Prune expectations against THIS read frame: a pending create settles the
+  // moment the child is visible here; a pending delete settles the moment the
+  // victim is terminating or gone. One frame — counts can never double.
+  const expect = ctl.expect.get(rs.uid) ?? { creates: [], deletes: [] }
+  expect.creates = expect.creates.filter((podUid) => !state.etcd.objects.has(podUid))
+  expect.deletes = expect.deletes.filter((podUid) => {
+    const pod = state.etcd.objects.get(podUid)
+    return pod !== undefined && pod.deletionTimestamp === undefined
+  })
+  const effective = children.length + expect.creates.length - expect.deletes.length
 
   if (effective < rs.spec.replicas) {
     const missing = rs.spec.replicas - effective
@@ -44,21 +53,29 @@ export function reconcileReplicaSet(state: SimState, uid: Uid): void {
         { ...rs.labels },
       )
       state.podOwners.set(pod.uid, rs.uid)
+      expect.creates.push(pod.uid)
       submit(state, 'create', pod, 'ctl.replicaset')
     }
-    ctl.expect.set(rs.uid, { creates: expect.creates + batch, deletes: expect.deletes })
     pushEvent(state, 'Normal', 'SuccessfulCreate', rs.name, `filed ${batch} pod permit(s), want ${rs.spec.replicas}`)
   } else if (effective > rs.spec.replicas) {
     // Victims: newest first by uid — a deterministic simplification of the
     // real ranking (unready-first, pod-deletion-cost); disclosed in FIDELITY.md.
     const surplus = effective - rs.spec.replicas
     const victims = [...children]
+      .filter((p) => !expect.deletes.includes(p.uid))
       .sort((a, b) => uidSeqOf(b.uid) - uidSeqOf(a.uid))
       .slice(0, surplus)
-    for (const v of victims) submit(state, 'delete', clone(v), 'ctl.replicaset')
-    ctl.expect.set(rs.uid, { creates: expect.creates, deletes: expect.deletes + victims.length })
-    pushEvent(state, 'Normal', 'SuccessfulDelete', rs.name, `filed ${victims.length} demolition notice(s)`)
+    for (const v of victims) {
+      expect.deletes.push(v.uid)
+      submit(state, 'delete', clone(v), 'ctl.replicaset')
+    }
+    if (victims.length > 0) {
+      pushEvent(state, 'Normal', 'SuccessfulDelete', rs.name, `filed ${victims.length} demolition notice(s)`)
+    }
   }
+
+  if (expect.creates.length === 0 && expect.deletes.length === 0) ctl.expect.delete(rs.uid)
+  else ctl.expect.set(rs.uid, expect)
 
   syncStatus(state, rs, children)
 }
@@ -70,6 +87,6 @@ function syncStatus(state: SimState, rs: ReplicaSetObj, children: PodObj[]): voi
     const next = clone(rs)
     next.status.observed = observed
     next.status.ready = ready
-    submit(state, 'update', next, 'ctl.replicaset')
+    submit(state, 'updateStatus', next, 'ctl.replicaset')
   }
 }

@@ -49,7 +49,7 @@ export function stepNodeLifecycle(state: SimState): void {
     if (ready.status !== shouldBeReady) {
       const next = clone(nodeObj)
       next.status.conditions = [{ type: 'Ready', status: shouldBeReady, since: state.now }]
-      submit(state, 'update', next, 'ctl.nodelifecycle')
+      submit(state, 'updateStatus', next, 'ctl.nodelifecycle')
       pushEvent(
         state,
         shouldBeReady ? 'Normal' : 'Warning',

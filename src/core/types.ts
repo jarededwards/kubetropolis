@@ -220,7 +220,14 @@ export interface EtcdState {
  * API server — the only doorway. Admission advances one stage per tick.
  * -------------------------------------------------------------------------*/
 
-export type ApiVerb = 'create' | 'update' | 'delete' | 'remove'
+/**
+ * 'update' merges spec/labels/generation onto the CURRENT object;
+ * 'updateStatus' merges only status (the status-subresource split that stops
+ * a stale status write from resurrecting an old spec — see FIDELITY.md);
+ * 'delete' stamps deletionTimestamp on scheduled pods (graceful) or removes;
+ * 'remove' is the kubelet's final act after termination.
+ */
+export type ApiVerb = 'create' | 'update' | 'updateStatus' | 'delete' | 'remove'
 
 export type AdmissionStage = 'authn' | 'mutating' | 'validating' | 'toEtcd'
 
@@ -284,6 +291,13 @@ export interface SchedulerState {
   /** last completed cycle, for the overlay and the M3 trace */
   cycle?: SchedCycle
   scheduled: number
+  /**
+   * Assumed pods — bindings this office has filed that have not yet been
+   * observed committed. Counted as occupying their node so back-to-back
+   * cycles cannot double-book a district (the real scheduler's reserve/assume
+   * cache). Cleared when the bound pod is observed.
+   */
+  assumed: Map<Uid, string>
 }
 
 /* ---------------------------------------------------------------------------
@@ -311,9 +325,12 @@ export interface ControllerState {
   /**
    * In-flight expectations per reconciled parent — the standard controller
    * trick that stops a desk from re-filing the same create/delete while its
-   * previous write is still in the pipeline. Decremented on watch delivery.
+   * previous write is still in the pipeline. Pending child uids are pruned
+   * at reconcile time against the desk's own read frame, so counts and
+   * expectations always live in ONE temporal frame (mixing frames is how a
+   * desk double-counts its own unobserved work and oscillates).
    */
-  expect: Map<Uid, { creates: number; deletes: number }>
+  expect: Map<Uid, { creates: Uid[]; deletes: Uid[] }>
 }
 
 /* ---------------------------------------------------------------------------

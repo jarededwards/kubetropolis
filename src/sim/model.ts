@@ -40,8 +40,14 @@ import { derive } from './vitals'
 
 export { samples } from './samples'
 
-export function createSim(bus: Bus): SimApi {
-  let state: SimState = initState(DEFAULT_SEED, { ...DEFAULT_KNOBS })
+export interface SimOptions {
+  seed?: number
+  knobs?: Partial<Knobs>
+}
+
+export function createSim(bus: Bus, opts?: SimOptions): SimApi {
+  const baseKnobs = (): Knobs => ({ ...DEFAULT_KNOBS, ...opts?.knobs })
+  let state: SimState = initState(opts?.seed ?? DEFAULT_SEED, baseKnobs())
   const intake: Command[] = []
 
   function tick(dt: number): void {
@@ -112,8 +118,8 @@ export function createSim(bus: Bus): SimApi {
     toSnapshot() {
       return toSnapshot(state)
     },
-    reset(seed = DEFAULT_SEED): void {
-      state = initState(seed, { ...DEFAULT_KNOBS })
+    reset(seed = opts?.seed ?? DEFAULT_SEED): void {
+      state = initState(seed, baseKnobs())
       intake.length = 0
       bus.emit('sim:reset', {})
     },

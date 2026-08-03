@@ -129,6 +129,11 @@ export function drainWatchers(state: SimState): void {
       w.sentRev = rec.rev
       deliver(state, w.subscriber, rec)
     }
+    // Watch bookmarks: an idle subscriber's position advances even without
+    // events for its kinds, so it never falls behind compaction while healthy.
+    if (w.backlog.length === 0 && w.sentRev < state.etcd.revision) {
+      w.sentRev = state.etcd.revision
+    }
   }
 }
 
@@ -170,10 +175,7 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
   if (subscriber === 'ctl.deployment') {
     const ctl = state.controllers.deployment
     if (rec.kind === 'Deployment') enqueue(ctl.workqueue, rec.uid)
-    if (rec.kind === 'ReplicaSet' && obj?.ownerUid) {
-      if (rec.event === 'ADDED') settleExpectation(state, 'deployment', obj.ownerUid, 'creates')
-      enqueue(ctl.workqueue, obj.ownerUid)
-    }
+    if (rec.kind === 'ReplicaSet' && obj?.ownerUid) enqueue(ctl.workqueue, obj.ownerUid)
     return
   }
 
@@ -182,11 +184,7 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
     if (rec.kind === 'ReplicaSet') enqueue(ctl.workqueue, rec.uid)
     if (rec.kind === 'Pod') {
       const owner = obj?.ownerUid ?? state.podOwners.get(rec.uid)
-      if (rec.event === 'ADDED' && owner) settleExpectation(state, 'replicaset', owner, 'creates')
-      if (rec.event === 'DELETED' && owner) {
-        settleExpectation(state, 'replicaset', owner, 'deletes')
-        state.podOwners.delete(rec.uid)
-      }
+      if (rec.event === 'DELETED') state.podOwners.delete(rec.uid)
       if (owner) enqueue(ctl.workqueue, owner)
     }
     return
@@ -210,18 +208,6 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
 
 function enqueue(queue: string[], uid: string): void {
   if (!queue.includes(uid)) queue.push(uid)
-}
-
-function settleExpectation(
-  state: SimState,
-  controller: 'deployment' | 'replicaset',
-  ownerUid: string,
-  field: 'creates' | 'deletes',
-): void {
-  const e = state.controllers[controller].expect.get(ownerUid)
-  if (!e) return
-  e[field] = Math.max(0, e[field] - 1)
-  if (e.creates === 0 && e.deletes === 0) state.controllers[controller].expect.delete(ownerUid)
 }
 
 /** Deterministic pod pick for DeletePod by exact name, else newest by uid. */

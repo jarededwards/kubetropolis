@@ -17,6 +17,13 @@ import { clone, getPod, pushEvent, SCHED_BACKOFF_SECONDS } from './objects'
 export function stepScheduler(state: SimState): void {
   const sched = state.sched
 
+  // Assumed pods: forget an assumption once the bind is observed committed
+  // (or the pod vanished while the bind was in flight).
+  for (const [uid] of sched.assumed) {
+    const pod = getPod(state, uid)
+    if (!pod || pod.spec.nodeName) sched.assumed.delete(uid)
+  }
+
   // Backoff retry: unschedulable pods rejoin the queue when due.
   if (sched.backoff.length > 0) {
     const still: typeof sched.backoff = []
@@ -62,6 +69,7 @@ export function stepScheduler(state: SimState): void {
 
   sched.cycle = { podUid: pod.uid, filter: verdicts, score: scores, chosen: best.node }
   sched.scheduled += 1
+  sched.assumed.set(pod.uid, best.node)
 
   // Bind = an API write. It enters admission next tick like everything else.
   const bound = clone(pod)
@@ -88,12 +96,28 @@ function filterNode(state: SimState, pod: PodObj, nodeObj: NodeObj): FilterVerdi
     }
   }
   const sim = state.nodes.find((n) => n.id === nodeObj.name)
-  const cpuFree = nodeObj.status.allocatable.cpuM - (sim?.allocated.cpuM ?? 0)
-  const memFree = nodeObj.status.allocatable.memMi - (sim?.allocated.memMi ?? 0)
+  const assumed = assumedLoad(state, nodeObj.name)
+  const cpuFree = nodeObj.status.allocatable.cpuM - (sim?.allocated.cpuM ?? 0) - assumed.cpuM
+  const memFree = nodeObj.status.allocatable.memMi - (sim?.allocated.memMi ?? 0) - assumed.memMi
   if (pod.spec.requests.cpuM > cpuFree || pod.spec.requests.memMi > memFree) {
     return { node: nodeObj.name, ok: false, failed: 'ResourcesFit' }
   }
   return { node: nodeObj.name, ok: true }
+}
+
+/** Requests of pods this office has assumed onto a node, pre-commit. */
+function assumedLoad(state: SimState, node: string): { cpuM: number; memMi: number } {
+  let cpuM = 0
+  let memMi = 0
+  for (const [uid, assumedNode] of state.sched.assumed) {
+    if (assumedNode !== node) continue
+    const pod = getPod(state, uid)
+    if (pod && !pod.spec.nodeName) {
+      cpuM += pod.spec.requests.cpuM
+      memMi += pod.spec.requests.memMi
+    }
+  }
+  return { cpuM, memMi }
 }
 
 function scoreNode(state: SimState, pod: PodObj, nodeObj: NodeObj): ScoreEntry {
@@ -106,18 +130,20 @@ function scoreNode(state: SimState, pod: PodObj, nodeObj: NodeObj): ScoreEntry {
   const leastAllocated = Math.round(
     50 * (1 - usedCpu / cap.cpuM) + 50 * (1 - usedMem / cap.memMi),
   )
-  // ImageLocality — the harbor pays off here.
-  const imageLocality = sim?.imageCache.has(pod.spec.image) ? 100 : 0
-  // Spread-lite: prefer nodes with fewer siblings of the same owner.
+  // ImageLocality — the harbor pays off here, but never outvotes spreading:
+  // in the real default profile its weight is small next to topology spread.
+  const imageLocality = sim?.imageCache.has(pod.spec.image) ? 50 : 0
+  // Spread-lite: prefer nodes with fewer siblings of the same owner —
+  // counting both committed bindings and this office's own assumptions.
   let siblings = 0
   if (pod.ownerUid) {
     for (const o of state.etcd.objects.values()) {
-      if (o.kind === 'Pod' && o.ownerUid === pod.ownerUid && o.spec.nodeName === nodeObj.name) {
-        siblings += 1
-      }
+      if (o.kind !== 'Pod' || o.ownerUid !== pod.ownerUid) continue
+      const where = o.spec.nodeName ?? state.sched.assumed.get(o.uid)
+      if (where === nodeObj.name) siblings += 1
     }
   }
-  const spread = Math.max(0, 100 - 25 * siblings)
+  const spread = Math.max(0, 100 - 60 * siblings)
 
   return {
     node: nodeObj.name,

@@ -21,15 +21,18 @@ export function reconcileDeployment(state: SimState, uid: Uid): void {
   const current = children.find((rs) => rs.spec.podTemplateHash === hash)
 
   if (!current) {
-    const expect = ctl.expect.get(dep.uid) ?? { creates: 0, deletes: 0 }
-    if (expect.creates === 0) {
+    const expect = ctl.expect.get(dep.uid) ?? { creates: [], deletes: [] }
+    expect.creates = expect.creates.filter((rsUid) => !state.etcd.objects.has(rsUid))
+    if (expect.creates.length === 0) {
       const rs = mkReplicaSet(state, dep, hash)
+      expect.creates.push(rs.uid)
+      ctl.expect.set(dep.uid, expect)
       submit(state, 'create', rs, 'ctl.deployment')
-      ctl.expect.set(dep.uid, { creates: 1, deletes: 0 })
       pushEvent(state, 'Normal', 'ScalingReplicaSet', dep.name, `opened contract ${rs.name} for ${rs.spec.replicas}`)
     }
     return
   }
+  ctl.expect.delete(dep.uid)
 
   if (current.spec.replicas !== dep.spec.replicas) {
     const next = clone(current)
@@ -62,6 +65,6 @@ function syncStatus(state: SimState, dep: DeploymentObj, children: ReplicaSetObj
     next.status.observed = observed
     next.status.ready = ready
     next.status.updated = observed
-    submit(state, 'update', next, 'ctl.deployment')
+    submit(state, 'updateStatus', next, 'ctl.deployment')
   }
 }

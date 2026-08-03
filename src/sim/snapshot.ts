@@ -54,6 +54,7 @@ export function toSnapshot(state: SimState): unknown {
       backoff: state.sched.backoff.map((b) => ({ uid: b.uid, until: round6(b.until) })),
       cycle: state.sched.cycle ?? null,
       scheduled: state.sched.scheduled,
+      assumed: [...state.sched.assumed.entries()].sort(([a], [b]) => (a < b ? -1 : 1)),
     },
     controllers: Object.fromEntries(
       Object.entries(state.controllers).map(([id, c]) => [
