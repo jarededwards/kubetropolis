@@ -94,7 +94,10 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
     if (!t) {
       let h = 0
       for (let i = 0; i < hashLabel.length; i++) h = (h * 31 + hashLabel.charCodeAt(i)) | 0
-      t = new THREE.Color().setHSL(((h >>> 0) % 360) / 360, 0.42, 0.46)
+      // M8 art pass: saturated, lightness alternates by hash so v1-vs-v2
+      // reads as a renovation FRONT even at overview zoom under low quality.
+      const hue = ((h >>> 0) % 360) / 360
+      t = new THREE.Color().setHSL(hue, 0.72, (h & 1) === 0 ? 0.42 : 0.58)
       hashTints.set(hashLabel, t)
     }
     return t

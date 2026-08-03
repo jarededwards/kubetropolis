@@ -83,6 +83,8 @@ export function createIngress(ctx: WorldContext): WorldModule {
   pylon.position.set(jn[0], 4.5, jn[2])
   group.add(pylon)
   const boardMat = new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide })
+  // Signage is UI, not architecture: keep it legible below the bloom.
+  boardMat.toneMapped = false
   const board = new THREE.Mesh(new THREE.PlaneGeometry(15, 7), boardMat)
   board.position.set(jn[0], 10.6, jn[2])
   group.add(board)
