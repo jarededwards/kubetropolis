@@ -314,8 +314,21 @@ if (!scenario.ended) fail('scenario', 'Escape did not end the scenario')
 const tour = await evaluate(`(async () => {
   const K = window.KUBETROPOLIS
   const chipBefore = !!document.querySelector('[data-tour-invitation]')
+  /* Frame-locked waits: fixed timers race the rAF-driven card binder on slow
+   * (SwiftShader) hosts, and headless Chrome throttles page timers. */
+  const frame = () => new Promise((raf) => requestAnimationFrame(() => requestAnimationFrame(raf)))
+  const until = async (cond, tries) => {
+    for (let i = 0; i < tries; i++) {
+      if (cond()) return true
+      await frame()
+    }
+    return cond()
+  }
   K.bus.emit('tour:start', {})
-  await new Promise((r) => setTimeout(r, 700))
+  await until(() => {
+    const c = document.querySelector('.tour-narrate')
+    return !!c && (c.textContent || '').includes('TOUR · CHAPTER 1/10') && c.querySelectorAll('.ts').length === 10
+  }, 150)
   const chipGone = !document.querySelector('[data-tour-invitation]')
   const card = document.querySelector('.tour-narrate')
   const spoke = (card?.textContent || '').includes('TOUR · CHAPTER 1/10')
@@ -326,7 +339,10 @@ const tour = await evaluate(`(async () => {
   const lowerThird = !!r && r.top >= vh * 0.5 && r.bottom <= vh + 1
   const escPayload = { handled: false }
   K.bus.emit('ui:escape', escPayload)
-  await new Promise((r2) => setTimeout(r2, 250))
+  await until(
+    () => !(K.tour?.state?.().running) && !document.querySelector('.tour-narrate')?.classList.contains('is-live'),
+    60,
+  )
   const ended = escPayload.handled && !(K.tour?.state?.().running)
   const hidden = !card || !card.classList.contains('is-live')
   return { chipBefore, chipGone, spoke, chips, oneCard, lowerThird, ended, hidden }
