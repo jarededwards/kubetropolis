@@ -262,6 +262,33 @@ export interface LighthouseObj extends ObjMeta {
 }
 
 /** The kinds the model actually stores. Later milestones extend this. */
+/** The autoscaler desk's charter (M8). One HPA, targeting the demo Deployment. */
+export interface HpaObj extends ObjMeta {
+  kind: 'HorizontalPodAutoscaler'
+  spec: { targetDeployment: string; targetCpuPct: number; min: number; max: number }
+  status: {
+    currentUtilizationPct: number
+    desired: number
+    /** the desk's paper spike: recommendations inside the stabilization window */
+    recommendations: { at: number; desired: number }[]
+    lastScaleAt?: number
+  }
+}
+
+/** A promise you made to stay available (M8). Guards EVICTIONS, not deletes. */
+export interface PdbObj extends ObjMeta {
+  kind: 'PodDisruptionBudget'
+  spec: { selector: Record<string, string>; minAvailable: number }
+  status: { blockedEvictions: number }
+}
+
+/** The neighborhood permit cap (M8): counts objects, not intentions. */
+export interface QuotaObj extends ObjMeta {
+  kind: 'ResourceQuota'
+  spec: { hardPods: number }
+  status: { usedPods: number }
+}
+
 export type K8sObject =
   | PodObj
   | ReplicaSetObj
@@ -272,6 +299,9 @@ export type K8sObject =
   | EndpointSliceObj
   | CustomResourceDefinitionObj
   | LighthouseObj
+  | HpaObj
+  | PdbObj
+  | QuotaObj
 
 /* ---------------------------------------------------------------------------
  * Watch machinery — state moves ONLY as watch events.
@@ -335,9 +365,9 @@ export interface EtcdState {
  * 'delete' stamps deletionTimestamp on scheduled pods (graceful) or removes;
  * 'remove' is the kubelet's final act after termination.
  */
-export type ApiVerb = 'create' | 'update' | 'updateStatus' | 'delete' | 'remove'
+export type ApiVerb = 'create' | 'update' | 'updateStatus' | 'delete' | 'remove' | 'evict'
 
-export type AdmissionStage = 'authn' | 'mutating' | 'validating' | 'toEtcd'
+export type AdmissionStage = 'authn' | 'mutating' | 'quota' | 'validating' | 'toEtcd'
 
 export type ComponentId = string
 
@@ -508,6 +538,15 @@ export interface LocalPodRuntime {
   cpuUsedM?: number
 }
 
+export interface DrainState {
+  node: string
+  phase: 'evicting' | 'done'
+  /** eviction attempts bounced off a budget so far */
+  denied: number
+  nextAttemptAt: number
+  backoffSec: number
+}
+
 export interface NodeSim {
   id: string
   objUid: Uid
@@ -601,6 +640,15 @@ export interface Vitals {
   /* -- M7 -- */
   /** a CustomResourceDefinition is registered (City Hall's counter window) */
   crdRegistered: boolean
+  /* -- M8 -- */
+  /** NoExecute countdowns currently armed */
+  evictionsArmed: number
+  /** eviction attempts bounced off a PodDisruptionBudget, lifetime */
+  drainDeniedTotal: number
+  /** pod creates rejected by the neighborhood quota, lifetime */
+  quotaRejectedTotal: number
+  /** the autoscaler desk's last written desired replicas (0 = never) */
+  hpaLastDesired: number
 }
 
 /* ---------------------------------------------------------------------------
@@ -864,6 +912,23 @@ export interface SetOperatorCommand {
   running: boolean
 }
 
+/** No kubectl verb does this — displayed honestly as `chaos: cut power`. */
+export interface SetNodePowerCommand {
+  kind: 'SetNodePower'
+  node: ChaosNodeTarget
+  powered: boolean
+}
+
+export interface DrainNodeCommand {
+  kind: 'DrainNode'
+  node: string
+}
+
+export interface UncordonNodeCommand {
+  kind: 'UncordonNode'
+  node: string
+}
+
 export type Command =
   | ApplyPodCommand
   | ApplyDeploymentCommand
@@ -876,6 +941,9 @@ export type Command =
   | ApplyCrdCommand
   | ApplyLighthouseCommand
   | SetOperatorCommand
+  | SetNodePowerCommand
+  | DrainNodeCommand
+  | UncordonNodeCommand
 
 /* ---------------------------------------------------------------------------
  * Knobs — every one has a visible city effect (KNOB-AUDIT discipline).
@@ -1009,6 +1077,21 @@ export interface SimState {
    * object) can still be routed to the owning desk. Sim-internal bookkeeping.
    */
   podOwners: Map<Uid, Uid>
+  /**
+   * Drains in progress (M8). kubectl drain is a CLIENT loop: cordon once, then
+   * evict pod-by-pod, retrying 429s with backoff — inspectors do not sulk.
+   */
+  drains: DrainState[]
+  /**
+   * NoExecute countdowns armed by the taint manager (M8): pod uid → the model
+   * second its toleration expires. World renders remaining time as the
+   * countdown ring; recovery cancels the entry.
+   */
+  evictions: Map<Uid, number>
+  /** RS keys to re-enqueue after a quota rejection (retry with backoff). */
+  quotaRetries: { rsUid: Uid; at: number }[]
+  /** lifetime counters surfaced through vitals (M8) */
+  counters: { drainDenied: number; quotaRejected: number; hpaLastDesired: number }
   /** ring buffer, cap 500 — the newspaper */
   events: ClusterEvent[]
   trace: TraceRecord | null

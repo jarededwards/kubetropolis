@@ -119,6 +119,12 @@ export function toSnapshot(state: SimState): unknown {
             state.beacon.refuelArriveAt === undefined ? null : round6(state.beacon.refuelArriveAt),
         }
       : null,
+    drains: state.drains.map((d) => ({ ...d, nextAttemptAt: round6(d.nextAttemptAt) })),
+    evictions: [...state.evictions.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([uid, at]) => [uid, round6(at)]),
+    quotaRetries: state.quotaRetries.map((q) => ({ ...q, at: round6(q.at) })),
+    counters: { ...state.counters },
     podOwners: [...state.podOwners.entries()].sort(([a], [b]) => (a < b ? -1 : 1)),
     events: state.events.map((e) => ({ ...e, at: round6(e.at) })),
     trace: state.trace,

@@ -82,5 +82,9 @@ export function derive(state: SimState): void {
     reqRefusedTotal: state.traffic.refused,
     cpuUsedM: Math.round(cpuUsedM),
     crdRegistered,
+    evictionsArmed: state.evictions.size,
+    drainDeniedTotal: state.counters.drainDenied,
+    quotaRejectedTotal: state.counters.quotaRejected,
+    hpaLastDesired: state.counters.hpaLastDesired,
   }
 }
