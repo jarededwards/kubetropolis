@@ -129,8 +129,9 @@ export const CHAPTERS: readonly TourChapter[] = [
       'Nothing in this city renovates a building. shopfront v2 means new buildings: the desk '
       + 'opens a second contract for v2 and shrinks the v1 contract as replacements pass '
       + `their checks. The defaults allow ${RU.surgePct}% over budget and ${RU.unavailablePct}% `
-      + 'short at a time, rounded against your replica count. No v1 door closes until a v2 '
-      + 'door is open and Ready.',
+      + 'short at a time — surge rounds up, unavailable rounds down. At 3 replicas '
+      + `floor(3 × ${RU.unavailablePct}%) = 0, so no v1 door closes until a v2 door is Ready; `
+      + 'raise the replica count and maxUnavailable starts closing doors first.',
     focus: 'inspectors.desk.deployment',
     duration: 34,
     ensureDeployment: true,
@@ -182,9 +183,9 @@ export const CHAPTERS: readonly TourChapter[] = [
     title: 'How long nothing happens',
     body:
       'We are about to cut power to a district, and the first lesson is patience. The '
-      + `foreman's lease stops renewing; after a ${NM.graceSeconds}-second grace City Hall marks the `
+      + `foreman's lease stops renewing; after a ${NM.graceSeconds} model-second grace City Hall marks the `
       + 'district Unknown and posts the unreachable taints. The buildings then stand — every '
-      + `Pod carries a ${TL.defaultSeconds}-second toleration it never asked for. This chapter turns that `
+      + `Pod carries a ${TL.defaultSeconds} model-second toleration it never asked for. This chapter turns that `
       + 'dial down to thirty so you can watch the whole arc: countdowns, NodeLost, and the '
       + 'contract rebuilding in districts that still have lights.',
     focus: 'node.b.gate',
@@ -205,7 +206,7 @@ export const CHAPTERS: readonly TourChapter[] = [
   },
   {
     id: 'hpa',
-    title: 'One division, every fifteen seconds',
+    title: `One division, every ${HP.syncSeconds} model seconds`,
     body:
       `The autoscaler desk performs a single division on a timer: usage over target, every ${HP.syncSeconds} `
       + 'model seconds, times the current replicas, rounded up. Rush-hour traffic pushes the '
@@ -215,7 +216,9 @@ export const CHAPTERS: readonly TourChapter[] = [
     focus: 'inspectors.office',
     duration: 40,
     ensureDeployment: true,
-    knobs: { hpaEnabled: true, hpaTargetCpuPct: 50, hpaMax: 10, reqPerSec: 220 },
+    // 4× time so the stabilization window can close inside the chapter — the
+    // your-turn's payoff is WATCHED, not asserted (invariance is test-proven).
+    knobs: { hpaEnabled: true, hpaTargetCpuPct: 50, hpaMax: 10, reqPerSec: 220, timeScale: 4 },
     act: [[1, 'apply-service']],
     look: [
       [12, 'service.junction'],
@@ -223,7 +226,7 @@ export const CHAPTERS: readonly TourChapter[] = [
       [32, 'node.c.gate'],
     ],
     yourTurn: {
-      prompt: `Drop the traffic — and watch the ${HP.stabilizationSeconds}-second window refuse to panic.`,
+      prompt: `Drop the traffic — at 4× time, watch the ${HP.stabilizationSeconds} model-second window refuse to panic, then close.`,
       arm: 'calm',
       done:
         'Scale-up was eager; scale-down waits out the window\'s highest recommendation. '
@@ -263,7 +266,7 @@ export const CHAPTERS: readonly TourChapter[] = [
     title: 'A healthy cluster is not quiet',
     body:
       `Run the clock. Lease renewals every ${HB.leaseRenewSeconds} model seconds, readiness `
-      + `visits every ${PR.periodSeconds}, desks waking on their own timers — health here is `
+      + `visits every ${PR.periodSeconds} model seconds, desks waking on their own timers — health here is `
       + 'periodic, not silent. Everything you watched was a row in the vault and a desk '
       + 'comparing it to the street. The scenarios menu breaks this city on purpose, and '
       + 'Help says exactly where the model ends.',
@@ -392,7 +395,7 @@ export function createTour(ctx: UiContext): UiModule {
   cleanup.push(
     bus.on('tour:start', () => start()),
     bus.on('select', (p) => armMatches('select', p)),
-    bus.on('trace:open', () => armMatches('picker')),
+    // A filing (action:run), not merely opening the drawer, satisfies 'picker'.
     bus.on('scenario:open', () => armMatches('scenarios')),
     bus.on('action:run', (p) => {
       const ch = engine.chapter

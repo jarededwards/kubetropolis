@@ -15,7 +15,8 @@ export interface TraceStopCopy {
   body(t: TraceRecord): string
   /** the mono counter line under the prose — live evidence, not adjectives */
   line(t: TraceRecord): string
-  hint?: string
+  /** wayfinding under the transport; a function when the right next step depends on the run */
+  hint?: string | ((t: TraceRecord) => string)
 }
 
 const P = CLAIM_VALUES.probes
@@ -112,7 +113,7 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
   start_probes: {
     title: 'Running is not ready',
     body: () =>
-      `The doors are on and the lights work. Now an inspector visits every ${P.periodSeconds} ${CLAIM_VALUES.modelDuration.prose} seconds — and until a visit passes, no directory anywhere will list this building.`,
+      `The doors are on and the lights work. Now an inspector visits every ${P.periodSeconds} ${UNIT} — and until a visit passes, no directory anywhere will list this building.`,
     line: (t) =>
       `restarts ${t.restarts} · readiness passes ${t.readyOks} · next visit in ${t.nextProbeInSec.toFixed(1)} ${UNIT}`,
   },
@@ -232,7 +233,12 @@ const DELETE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
         : 'No traffic flowed, so the race had no victims this time. Apply a Service, put callers on the road, and run this rail again.',
     line: (t) =>
       `misrouted ${t.misroutedSince} · replacement ${t.replacementName || '—'} · trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)} ${UNIT}`,
-    hint: 'Try the fix: re-run with a preStop sleep longer than the propagation.',
+    hint: (t) =>
+      !t.trafficLive
+        ? 'Apply a Service and put traffic on the road, then run this rail again.'
+        : t.misroutedSince > 0
+          ? 'Try the fix: re-run with a preStop sleep longer than the propagation.'
+          : 'Already the fix, working — re-run without the preStop sleep to see the race return.',
   },
 }
 
@@ -291,13 +297,16 @@ const LIGHTHOUSE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
     title: 'The whole lesson on one receipt',
     body: (t) =>
       t.rejectedError !== ''
-        ? `The desk refused it: "${t.rejectedError}". A permit cannot cite a law that was never passed — apply the CustomResourceDefinition first, then file this again.`
+        ? `The desk refused it — ${t.rejectedError}. A permit cannot cite a law that was never passed — apply the CustomResourceDefinition first, then file this again.`
         : 'Built-in kinds come with inspectors. Yours gets one only if you run it — and keeps it only while you keep it running. That is the operator pattern, whole.',
     line: (t) =>
       t.rejectedError !== ''
         ? 'rejected at validation · nothing was stored'
         : `lit · fuel ${t.beaconFuelPct}% · reconciles ${t.operatorReconciles} · trips ${t.trips}`,
-    hint: 'Unstaff the shack from its inspector panel and watch the fuel gauge.',
+    hint: (t) =>
+      t.rejectedError !== ''
+        ? 'Apply the CRD, then run this trace again.'
+        : 'Unstaff the shack from its inspector panel and watch the fuel gauge.',
   },
 }
 

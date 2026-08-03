@@ -184,7 +184,7 @@ export function createTraceUi(ctx: UiContext): UiModule {
       title: copy.title,
       body: copy.body(t),
       code: line,
-      hint: copy.hint,
+      hint: typeof copy.hint === 'function' ? copy.hint(t) : copy.hint,
     })
     card.setStages(
       rail.map((s) => ({

@@ -1,3 +1,4 @@
+import { CLAIM_VALUES } from '../core/claims'
 import { DESTINATIONS } from '../core/destinations'
 import { ENGINE_CREDIT, NO_FOREIGN_CONTENT, TRADEMARK_NOTICE } from './legal'
 import type { UiContext, UiModule } from './uikit'
@@ -14,7 +15,7 @@ const KEYMAP: readonly [string, string][] = [
   ['/', 'find anything'],
   ['`', 'simulation state overlay'],
   ['H', 'this panel'],
-  ['T', 'the tour (arrives in a later milestone)'],
+  ['T', 'the guided tour'],
   ['Esc', 'close the top-most surface'],
 ]
 
@@ -40,8 +41,13 @@ export function createHelp(ctx: UiContext): UiModule {
       el('div', { class: 'help-what' },
         el('p', {
           text:
-            'An explorable model of how Kubernetes works. City Hall is the kube-apiserver; the vault below the plaza is etcd — the only source of truth; the inspectors reconcile the ledger against the street, forever. Everything you see is driven by a deterministic simulation, and everything it simplifies is listed in FIDELITY.md.',
+            'An explorable model of how Kubernetes works. City Hall is the kube-apiserver; the vault below the plaza is etcd — the only source of truth; the inspectors reconcile the ledger against the street, forever. Everything you see is driven by a deterministic simulation; defaults are as of Kubernetes ' + CLAIM_VALUES.k8sVersion + ', and everything the model simplifies is disclosed.',
         }),
+        el('p', { class: 'help-links' },
+          el('a', { href: './FIDELITY.md', target: '_blank', rel: 'noopener', text: 'Where the model ends → FIDELITY.md' }),
+          el('span', { text: ' · ' }),
+          el('a', { href: './KNOB-AUDIT.md', target: '_blank', rel: 'noopener', text: 'Every knob\'s proof → KNOB-AUDIT.md' }),
+        ),
       ),
       el('div', { class: 'help-cols' },
         el('div', { class: 'help-col' },

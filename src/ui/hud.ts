@@ -87,6 +87,7 @@ export function createHud(ctx: UiContext): UiModule {
       fps,
       runBtn,
       scenarioBtn,
+      tourBtn,
       searchBtn,
       themeBtn,
       helpBtn,

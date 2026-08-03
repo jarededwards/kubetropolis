@@ -53,6 +53,7 @@ spec:
       image: ${DEMO_IMAGE_V1}
       resources:
         requests: { cpu: 250m, memory: 256Mi }
+        limits: { memory: 512Mi }
       readinessProbe:
         httpGet: { path: /healthz, port: 8080 }`
 
@@ -98,7 +99,10 @@ spec:
         - name: app
           image: ${DEMO_IMAGE_V1}
           resources:
-            requests: { cpu: 250m, memory: 256Mi }`
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }`
 
 const CRD_YAML = `apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -115,6 +119,8 @@ spec:
     - name: v1
       served: true
       storage: true
+      subresources:
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
@@ -123,7 +129,13 @@ spec:
               type: object
               properties:
                 beamRpm: { type: integer }
-                rangeM: { type: integer }`
+                rangeM: { type: integer }
+            status:
+              type: object
+              properties:
+                lit: { type: boolean }
+                fuelPct: { type: integer }
+                lastMaintainedAt: { type: integer }`
 
 const LIGHTHOUSE_YAML = `apiVersion: harbor.city/v1
 kind: Lighthouse
@@ -244,7 +256,7 @@ const CATALOG: ActionDef[] = [
     // Honest: no kubectl verb does this. It is the disaster, not a command.
     cmd: 'chaos: cut power to node-b',
     watch:
-      'Watch how long nothing happens — the 50-second grace, then the toleration countdowns. Both clocks are the lesson.',
+      'Watch how long nothing happens — the 50 model-second grace, then the toleration countdowns. Both clocks are the lesson.',
     subject: 'node-b',
     traceable: false,
     mkCommand: (state) => {
