@@ -36,8 +36,9 @@ carry a change-notice header. Do not remove either.
   timebase.advance → world update(dt, simState, t) → flows.update → render →
   labels → HUD. Nothing else schedules work.
 - All cluster mutations enter through one typed command surface,
-  sim.apply(command); the sim's internal watch stream uses K8s-shaped
-  {type: ADDED|MODIFIED|DELETED, object} envelopes. This keeps the v2
+  sim.apply(command); the sim's watch machinery delivers change records
+  (ADDED|MODIFIED|DELETED) whose payload is the current materialized object —
+  desks read the vault at reconcile time (see FIDELITY.md). This keeps the v2
   "read-only live cluster" seam open. kubectl is just another client.
 
 ## Determinism (non-negotiable)

@@ -19,7 +19,9 @@ domain content retained inert until the noted milestone replaces it).
 
 ## src/core (all V unless noted)
 types.ts **(A @M1: Kubernetes contract replaced the Postgres SimState/Knobs; TV-legacy block holds the constants/TableDef the TV world still needs until M2)** ·
-bus.ts · registry.ts · timebase.ts(+test) · theme.ts(+test) **(TV palette → M2 retint)** ·
+bus.ts · registry.ts · timebase.ts(+test) **(A @M1.5, fidelity A2: timeScale
+varies the NUMBER of fixed steps per frame, never the step size — model
+behavior is invariant across playback speeds)** · theme.ts(+test) **(TV palette → M2 retint)** ·
 themes.ts(+test) **(A: theme localStorage key renamed)** · util.ts(+test) ·
 beveled-box.ts(+test) · build.ts **(A: define names)** ·
 city-route.ts(+test) · claims.ts **(A @M1: rewritten — Kubernetes claims registry, mechanism inherited)** ·
