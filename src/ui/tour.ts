@@ -38,8 +38,8 @@ export const CHAPTERS: readonly TourChapter[] = [
     focus: 'overview.balloon',
     duration: 22,
     look: [
-      [8, 'cityhall.plaza'],
-      [15, 'node.b.gate'],
+      [8, 'cityhall.permitdesk'],
+      [15, 'node.b.foreman'],
     ],
     yourTurn: {
       prompt: 'Click any building — the inspector panel reads its live state.',
@@ -84,10 +84,10 @@ export const CHAPTERS: readonly TourChapter[] = [
     ensureDeployment: true,
     act: [[6, 'delete-pod']],
     look: [
-      [7, 'node.a.gate'],
+      [7, 'node.a.foreman'],
       [12, 'inspectors.desk.replicaset'],
       [18, 'cityhall.permitdesk'],
-      [23, 'node.b.gate'],
+      [23, 'node.b.foreman'],
     ],
     yourTurn: {
       prompt: 'Delete another one — the desk will not mourn this one either.',
@@ -134,7 +134,7 @@ export const CHAPTERS: readonly TourChapter[] = [
     act: [[4, 'set-image-v2']],
     look: [
       [9, 'harbor.crane'],
-      [16, 'node.a.gate'],
+      [16, 'node.a.foreman'],
       [24, 'inspectors.desk.deployment'],
     ],
     yourTurn: {
