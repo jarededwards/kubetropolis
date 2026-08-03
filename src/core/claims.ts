@@ -101,6 +101,28 @@ export const CLAIM_VALUES = {
   modelEtcd: {
     fsyncMs: 5,
   },
+  /**
+   * Model-only: the Lighthouse's physics. Fuel drift exists so reconciliation
+   * is ongoing BY CONSTRUCTION — a custom resource whose desired state decays
+   * unless its operator keeps correcting it.
+   */
+  modelLighthouse: {
+    /** street-truth fuel drain while lit, percent per model second */
+    fuelDecayPctPerSec: 0.4,
+    /** the operator dispatches a refuel run below this */
+    refuelBelowPct: 30,
+    /** docks → breakwater travel time; fuel restores on ARRIVAL */
+    refuelTravelSeconds: 12,
+    /** construction time once the operator files the build */
+    buildSeconds: 6,
+    /** status published in buckets this size — desks do not spam the vault */
+    statusBucketPct: 5,
+  },
+  crd: {
+    group: 'harbor.city',
+    kind: 'Lighthouse',
+    plural: 'lighthouses',
+  },
 } as const
 
 /* ---------------------------------------------------------------------------
@@ -335,6 +357,40 @@ export const CLAIMS: readonly K8sClaim[] = [
     coverage: 'modeled',
     modelNote: 'Stands in for etcd fsync latency; the ordering (quorum, then fsync, then visible) is the claim.',
     usedBy: ['sim/etcd'],
+  },
+  {
+    id: 'crd.registration',
+    statement:
+      'A CustomResourceDefinition registers a new kind with the API server; applying a custom '
+      + 'resource whose kind is not registered is rejected ("no matches for kind"). Registration '
+      + 'creates storage and validation only — no controller appears with it.',
+    source: `${K8S_DOCS}concepts/extend-kubernetes/api-extension/custom-resources/`,
+    coverage: 'exact',
+    values: 'crd',
+    usedBy: ['sim/apiserver', 'sim/objects'],
+  },
+  {
+    id: 'crd.operator',
+    statement:
+      'An operator is an ordinary client: a controller process holding a watch on a custom '
+      + 'kind and reconciling it. Built-in kinds ship with controllers; custom kinds are '
+      + 'reconciled only while someone runs one.',
+    source: `${K8S_DOCS}concepts/extend-kubernetes/operator/`,
+    coverage: 'exact',
+    usedBy: ['sim/controllers/lighthouse'],
+  },
+  {
+    id: 'model.lighthouse',
+    statement:
+      `The Lighthouse burns ${CLAIM_VALUES.modelLighthouse.fuelDecayPctPerSec}% fuel per model second and its `
+      + `operator refuels below ${CLAIM_VALUES.modelLighthouse.refuelBelowPct}% — model numbers chosen so drift `
+      + 'is watchable. The mechanism (desired state decays; only a running reconciler corrects it) is the claim.',
+    coverage: 'modeled',
+    modelNote:
+      'Fuel, decay rate, and refuel travel are inventions of this model; real custom resources '
+      + 'drift for their own domain reasons.',
+    values: 'modelLighthouse',
+    usedBy: ['sim/controllers/lighthouse', 'world/harbor'],
   },
 ] as const
 

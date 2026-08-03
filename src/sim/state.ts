@@ -75,6 +75,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       idleNoService: 0,
     },
     operatorRunning: false,
+    beacon: null,
     podOwners: new Map(),
     events: [],
     trace: null,
@@ -95,6 +96,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       reqMisroutedTotal: 0,
       reqRefusedTotal: 0,
       cpuUsedM: 0,
+      crdRegistered: false,
     },
   }
 

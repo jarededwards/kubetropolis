@@ -26,5 +26,8 @@ export function traceStopBit(stop: TraceStop): number {
     case 'grace_countdown': return 1 << 16
     case 'sigkill': return 1 << 17
     case 'rs_notices': return 1 << 18
+    /* CRD rails (M7) */
+    case 'operator': return 1 << 19
+    case 'beacon': return 1 << 20
   }
 }

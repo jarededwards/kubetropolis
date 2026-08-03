@@ -3,7 +3,9 @@
  * behavior the model does not have (FIDELITY.md). */
 
 import type {
+  ApplyCrdCommand,
   ApplyDeploymentCommand,
+  ApplyLighthouseCommand,
   ApplyPodCommand,
   ApplyServiceCommand,
   DeletePodCommand,
@@ -11,6 +13,7 @@ import type {
   ScaleCommand,
   SetImageCommand,
   SetLimitCommand,
+  SetOperatorCommand,
 } from '../core/types'
 
 export const DEMO_IMAGE_V1 = 'harbor.city/shopfront:v1'
@@ -41,5 +44,14 @@ export const samples = {
   },
   service(name = 'shopfront', port = 80, host = DEMO_HOST): ApplyServiceCommand {
     return { kind: 'ApplyService', name, port, host }
+  },
+  crd(): ApplyCrdCommand {
+    return { kind: 'ApplyCrd' }
+  },
+  lighthouse(name = 'harbor-light', beamRpm = 6): ApplyLighthouseCommand {
+    return { kind: 'ApplyLighthouse', name, beamRpm }
+  },
+  setOperator(running: boolean): SetOperatorCommand {
+    return { kind: 'SetOperator', running }
   },
 } as const

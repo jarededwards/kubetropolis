@@ -226,6 +226,41 @@ export interface EndpointSliceObj extends ObjMeta {
   status: Record<string, never>
 }
 
+/**
+ * A CRD teaches City Hall a new form. Registration is schema-only — no
+ * controller appears, no building rises. A law is not a building (M7).
+ * Model boundary: kind-match only — no OpenAPI schema, versions, or
+ * conversion (FIDELITY.md).
+ */
+export interface CustomResourceDefinitionObj extends ObjMeta {
+  kind: 'CustomResourceDefinition'
+  spec: {
+    group: string
+    /** the kind this CRD registers (the model's one custom kind) */
+    names: { kind: 'Lighthouse'; plural: string }
+  }
+  status: { accepted: boolean }
+}
+
+/**
+ * The custom resource. Spec is the reader's ask; status is written ONLY by
+ * the operator — when nobody staffs the shack, status goes stale while the
+ * physical beacon (SimState.beacon, street truth) drifts. That gap IS the
+ * lesson.
+ */
+export interface LighthouseObj extends ObjMeta {
+  kind: 'Lighthouse'
+  spec: {
+    beamRpm: number
+    rangeM: number
+  }
+  status: {
+    lit: boolean
+    fuelPct: number
+    lastMaintainedAt?: number
+  }
+}
+
 /** The kinds the model actually stores. Later milestones extend this. */
 export type K8sObject =
   | PodObj
@@ -235,6 +270,8 @@ export type K8sObject =
   | LeaseObj
   | ServiceObj
   | EndpointSliceObj
+  | CustomResourceDefinitionObj
+  | LighthouseObj
 
 /* ---------------------------------------------------------------------------
  * Watch machinery — state moves ONLY as watch events.
@@ -561,6 +598,9 @@ export interface Vitals {
   reqRefusedTotal: number
   /** synthesized cluster CPU usage from live traffic, millicores */
   cpuUsedM: number
+  /* -- M7 -- */
+  /** a CustomResourceDefinition is registered (City Hall's counter window) */
+  crdRegistered: boolean
 }
 
 /* ---------------------------------------------------------------------------
@@ -587,6 +627,9 @@ export type TraceStop =
   | 'grace_countdown'
   | 'sigkill'
   | 'rs_notices'
+  /* -- CRD rails (M7): a law with no inspector is paper -- */
+  | 'operator'
+  | 'beacon'
   | 'done'
 
 export type TracePlayback = 'step' | 'slow' | 'live'
@@ -711,6 +754,22 @@ export interface TraceRecord {
   misroutedAtStart: number
   /** preStopSleepSec that would outlast the observed propagation, for "try the fix" */
   suggestedPreStopSec: number
+
+  /* -- CRD rails (M7) -- */
+  /** admission refused the CR — the real error string, verbatim on the card */
+  rejectedError: string
+  /** the validating stage found a registered CRD for this kind */
+  crdMatched: boolean
+  /** operatorRunning at the moment the rail reads it (live) */
+  operatorStaffed: boolean
+  /** the operator desk's reconcile count since the rail armed */
+  operatorReconciles: number
+  /** desk counter at arm time (the delta's baseline) */
+  operatorReconcilesAtStart: number
+  /** street truth from SimState.beacon, mirrored for the card */
+  beaconBuilt: boolean
+  beaconLit: boolean
+  beaconFuelPct: number
 }
 
 /* ---------------------------------------------------------------------------
@@ -787,6 +846,24 @@ export interface ApplyServiceCommand {
   selector?: Record<string, string>
 }
 
+/** `kubectl apply -f lighthouse-crd.yaml` — City Hall opens a counter window. */
+export interface ApplyCrdCommand {
+  kind: 'ApplyCrd'
+}
+
+/** `kubectl apply -f lighthouse.yaml` — rejected until the CRD exists. */
+export interface ApplyLighthouseCommand {
+  kind: 'ApplyLighthouse'
+  name: string
+  beamRpm: number
+}
+
+/** Staff or unstaff the operator's shack. Not a knob: an operator is a process. */
+export interface SetOperatorCommand {
+  kind: 'SetOperator'
+  running: boolean
+}
+
 export type Command =
   | ApplyPodCommand
   | ApplyDeploymentCommand
@@ -796,6 +873,9 @@ export type Command =
   | SetLimitCommand
   | DeletePodCommand
   | ApplyServiceCommand
+  | ApplyCrdCommand
+  | ApplyLighthouseCommand
+  | SetOperatorCommand
 
 /* ---------------------------------------------------------------------------
  * Knobs — every one has a visible city effect (KNOB-AUDIT discipline).
@@ -919,6 +999,12 @@ export interface SimState {
   traffic: TrafficState
   operatorRunning: boolean
   /**
+   * The physical beacon — street truth, like a container's working set. The
+   * vault's LighthouseObj.status is written only by the operator; when the
+   * shack is dark the two drift apart, and the drift is the lesson.
+   */
+  beacon: BeaconState | null
+  /**
    * Write-time pod→owner index so a DELETED watch record (which carries no
    * object) can still be routed to the owning desk. Sim-internal bookkeeping.
    */
@@ -933,6 +1019,21 @@ export interface SimState {
    */
   flowOutbox: FlowEmit[]
   vitals: Vitals
+}
+
+/** The lighthouse as it physically stands on the breakwater (plain JSON). */
+export interface BeaconState {
+  /** uid of the Lighthouse row this structure serves */
+  uid: Uid
+  /** construction completes at this model time; built when passed */
+  buildingUntil: number
+  built: boolean
+  lit: boolean
+  /** street-truth fuel; drains every model second while lit */
+  fuelPct: number
+  beamRpm: number
+  /** a refuel run is on the road; fuel restores on ARRIVAL */
+  refuelArriveAt?: number
 }
 
 /** A sim-side request for packets on a named road (flushed to bus 'flow'). */
@@ -1423,6 +1524,8 @@ export interface TourChapter {
   look?: [number, string][]
   /** mid-chapter knob beats (the PG at-beat: flip a chaos toggle ON CAMERA) */
   at?: [number, Partial<Knobs>][]
+  /** mid-chapter commands (SetOperator etc. — acts that are not ActionKinds) */
+  commandAt?: [number, Command][]
   /** stand up the demo Deployment before this chapter needs one */
   ensureDeployment?: boolean
   /** the chapter's closing prompt — the reader performs it, or skips */
@@ -1462,6 +1565,8 @@ export interface ScenarioDef {
   ensureDeployment?: boolean
   /** guarantee the demo Service exists too (M6 traffic scenarios) */
   ensureService?: boolean
+  /** start with the shack dark — the paper-law scenario's premise (M7) */
+  ensureOperatorOff?: boolean
   /** canned actions fired on schedule — the scenario acts ON CAMERA */
   actionAt?: [number, ActionKind][]
   /** scheduled knob changes (the PG at-beat analog): [atSecond, knobs] */

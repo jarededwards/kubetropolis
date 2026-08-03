@@ -27,12 +27,16 @@
 import { CLAIM_VALUES } from '../core/claims'
 import type { Bus, Command, Knobs, SimApi, SimState } from '../core/types'
 import { DEFAULT_KNOBS } from '../core/types'
-import { drainWatchers, findPodByName, stepAdmission, stepWatchFanout, submit } from './apiserver'
+import { drainWatchers, findPodByName, registerWatcher, stepAdmission, stepWatchFanout, submit } from './apiserver'
 import {
   CONTROLLER_BUDGET,
   clone,
+  getCrd,
+  getLighthouse,
   getService,
+  mkCrd,
   mkDeployment,
+  mkLighthouse,
   mkPod,
   mkService,
   pushEvent,
@@ -43,6 +47,7 @@ import {
 import type { ReplicaSetObj } from '../core/types'
 import { reconcileDeployment } from './controllers/deployment'
 import { reconcileEndpointSlice } from './controllers/endpointslice'
+import { reconcileLighthouse, stepBeacon } from './controllers/lighthouse'
 import { reconcileReplicaSet } from './controllers/replicaset'
 import { stepTraffic } from './traffic'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
@@ -86,6 +91,8 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     runController(state, 'deployment', reconcileDeployment)
     runController(state, 'replicaset', reconcileReplicaSet)
     runController(state, 'endpointslice', reconcileEndpointSlice)
+    // The shack works only while someone staffs it — the whole M7 lesson.
+    if (state.operatorRunning) runController(state, 'lighthouse', reconcileLighthouse)
     stepNodeLifecycle(state)
 
     // 6 — zoning
@@ -98,8 +105,10 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     // 8 — the data plane: citizens reach only doors some view says are open
     stepTraffic(state, dt)
 
-    // 9 — chaos & maintenance
+    // 9 — chaos & maintenance (and the breakwater's physics: fuel does not
+    // care whether anyone is watching)
     applyNodeChaos(state)
+    stepBeacon(state, dt)
     stepCompaction(state)
 
     // 10 — derive
@@ -119,7 +128,7 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
 
   function runController(
     s: SimState,
-    id: 'deployment' | 'replicaset' | 'endpointslice',
+    id: 'deployment' | 'replicaset' | 'endpointslice' | 'lighthouse',
     reconcile: (s2: SimState, uid: string) => void,
   ): void {
     const ctl = s.controllers[id]
@@ -128,7 +137,13 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     // via the seeded RNG — deterministic, but desks do not thunder together.
     if (s.now >= ctl.nextResyncAt) {
       const kind =
-        id === 'deployment' ? 'Deployment' : id === 'replicaset' ? 'ReplicaSet' : 'Service'
+        id === 'deployment'
+          ? 'Deployment'
+          : id === 'replicaset'
+            ? 'ReplicaSet'
+            : id === 'lighthouse'
+              ? 'Lighthouse'
+              : 'Service'
       for (const o of s.etcd.objects.values()) {
         if (o.kind === kind && !ctl.workqueue.includes(o.uid)) ctl.workqueue.push(o.uid)
       }
@@ -341,6 +356,55 @@ function runCommand(state: SimState, command: Command): void {
       svc.name,
       `service manifest submitted — ${command.host} will list open doors only`,
     )
+    return
+  }
+
+  if (command.kind === 'ApplyCrd') {
+    if (getCrd(state)) {
+      pushEvent(state, 'Normal', 'Unchanged', 'lighthouses.harbor.city', 'the council already passed this law')
+      return
+    }
+    const crd = mkCrd(state)
+    submit(state, 'create', crd, 'kubectl')
+    pushEvent(state, 'Normal', 'Applied', crd.name, 'a new kind is registered — City Hall opens a counter window')
+    return
+  }
+
+  if (command.kind === 'ApplyLighthouse') {
+    if (getLighthouse(state)) {
+      pushEvent(state, 'Normal', 'Unchanged', command.name, 'the breakwater already has its permit')
+      return
+    }
+    const cr = mkLighthouse(state, command.name, command.beamRpm)
+    // Admission decides its fate: without the CRD, validation rejects it with
+    // the real error — that teaching moment stays reachable.
+    submit(state, 'create', cr, 'kubectl')
+    pushEvent(state, 'Normal', 'Applied', cr.name, 'lighthouse manifest submitted')
+    return
+  }
+
+  if (command.kind === 'SetOperator') {
+    if (state.operatorRunning === command.running) return
+    state.operatorRunning = command.running
+    if (command.running) {
+      // The process starts and takes its watch — an ordinary client, on the
+      // longest road in the city.
+      if (!state.api.watchers.some((w) => w.subscriber === 'operator')) {
+        registerWatcher(state, 'operator', ['Lighthouse', 'CustomResourceDefinition'])
+      }
+      // A fresh process lists before it watches: look at every lighthouse now.
+      for (const o of state.etcd.objects.values()) {
+        if (o.kind === 'Lighthouse' && !state.controllers.lighthouse.workqueue.includes(o.uid)) {
+          state.controllers.lighthouse.workqueue.push(o.uid)
+        }
+      }
+      pushEvent(state, 'Normal', 'OperatorStaffed', 'operator.shack', 'the shack lights up — its watch begins')
+    } else {
+      // The process exits; its watch dies with it. The row will not miss it.
+      state.api.watchers = state.api.watchers.filter((w) => w.subscriber !== 'operator')
+      state.controllers.lighthouse.workqueue.length = 0
+      pushEvent(state, 'Normal', 'OperatorStopped', 'operator.shack', 'the shack goes dark — nothing holds the watch now')
+    }
     return
   }
 

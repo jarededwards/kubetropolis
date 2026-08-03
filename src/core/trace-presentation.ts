@@ -60,9 +60,38 @@ export const PRESENTED_DELETE_STAGES: readonly PresentedTraceStage[] = [
   { stop: 'done', label: 'RECEIPT' },
 ]
 
+/**
+ * The CRD rail (M7): a law is not a building. Short by design — the point is
+ * how little happens.
+ */
+export const PRESENTED_CRD_STAGES: readonly PresentedTraceStage[] = [
+  { stop: 'client', label: 'CLIENT' },
+  { stop: 'admission', label: 'ADMIT' },
+  { stop: 'etcd_commit', label: 'LEDGER' },
+  { stop: 'watch_fanout', label: 'FANOUT' },
+  { stop: 'done', label: 'RECEIPT' },
+]
+
+/**
+ * The custom-resource rail (M7). It runs the same hall as everything else,
+ * then stops at the shack: whether anything EVER happens depends on whether
+ * someone staffs it. The rail holds at OPERATOR until the beacon lights.
+ */
+export const PRESENTED_LIGHTHOUSE_STAGES: readonly PresentedTraceStage[] = [
+  { stop: 'client', label: 'CLIENT' },
+  { stop: 'admission', label: 'ADMIT' },
+  { stop: 'etcd_commit', label: 'LEDGER' },
+  { stop: 'watch_fanout', label: 'FANOUT' },
+  { stop: 'operator', label: 'SHACK' },
+  { stop: 'beacon', label: 'BEACON' },
+  { stop: 'done', label: 'RECEIPT' },
+]
+
 export function presentedStages(action: string): readonly PresentedTraceStage[] {
   if (action === 'apply-deployment') return PRESENTED_DEPLOYMENT_STAGES
   if (action === 'delete-pod') return PRESENTED_DELETE_STAGES
+  if (action === 'apply-crd') return PRESENTED_CRD_STAGES
+  if (action === 'apply-lighthouse') return PRESENTED_LIGHTHOUSE_STAGES
   return PRESENTED_TRACE_STAGES
 }
 

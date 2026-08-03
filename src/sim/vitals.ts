@@ -57,6 +57,14 @@ export function derive(state: SimState): void {
     ? slice.spec.endpoints.reduce((n, e) => n + (e.conditions.ready ? 1 : 0), 0)
     : 0
 
+  let crdRegistered = false
+  for (const obj of state.etcd.objects.values()) {
+    if (obj.kind === 'CustomResourceDefinition') {
+      crdRegistered = true
+      break
+    }
+  }
+
   state.vitals = {
     podsTotal,
     podsRunning,
@@ -73,5 +81,6 @@ export function derive(state: SimState): void {
     reqMisroutedTotal: state.traffic.misrouted,
     reqRefusedTotal: state.traffic.refused,
     cpuUsedM: Math.round(cpuUsedM),
+    crdRegistered,
   }
 }
