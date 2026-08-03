@@ -54,7 +54,7 @@ export function createDebugOverlay(): DebugOverlay {
     lines.push('')
     for (const n of s.nodes) {
       const obj = s.etcd.objects.get(n.objUid)
-      const ready = obj?.kind === 'Node' && obj.status.conditions[0]?.status
+      const ready = obj?.kind === 'Node' && obj.status.conditions[0]?.status === 'True'
       lines.push(
         `${n.id} ${n.powered ? (ready ? 'Ready   ' : 'NotReady') : 'OFF     '} `
           + `cpu ${n.allocated.cpuM}/${n.allocatable.cpuM}m  mem ${n.allocated.memMi}/${n.allocatable.memMi}Mi`

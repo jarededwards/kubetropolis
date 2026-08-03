@@ -28,7 +28,9 @@ describe('nodes — heartbeats and the lifecycle desk', () => {
     const t1 = lease(sim, 'node-a').spec.renewedAt
     stepUntil(sim, () => lease(sim, 'node-a').spec.renewedAt > t1, 900, 'second renewal')
     const t2 = lease(sim, 'node-a').spec.renewedAt
-    expect(t2 - t1).toBeCloseTo(CLAIM_VALUES.kubeletHeartbeat.statusUpdateSeconds, 0)
+    // Lease renewal cadence — NOT the Node .status heartbeat, which is a
+    // separate five-minute affair (fidelity B8).
+    expect(t2 - t1).toBeCloseTo(CLAIM_VALUES.kubeletHeartbeat.leaseRenewSeconds, 0)
   })
 
   it('how long nothing happens: silence → NotReady only after the 50s grace', () => {
@@ -37,22 +39,26 @@ describe('nodes — heartbeats and the lifecycle desk', () => {
     sim.setKnob('chaosNodeFail', 'node-b')
     const cutAt = sim.state.now
 
-    stepUntil(sim, () => !nodeObj(sim, 'node-b').status.conditions[0].status, 3600, 'NotReady')
+    stepUntil(sim, () => nodeObj(sim, 'node-b').status.conditions[0].status !== 'True', 3600, 'NotReady')
     const notReadyAt = sim.state.now
     // Never earlier than the grace period; monitor period + heartbeat staleness add slack.
     expect(notReadyAt - cutAt).toBeGreaterThanOrEqual(CLAIM_VALUES.nodeMonitor.graceSeconds - 1)
+    // Heartbeat loss means UNKNOWN — the desk cannot tell dead from partitioned.
+    expect(nodeObj(sim, 'node-b').status.conditions[0].status).toBe('Unknown')
     expect(sim.state.events.some((e) => e.reason === 'NodeNotReady')).toBe(true)
     // The other district keeps its heartbeat and its Ready condition.
-    expect(nodeObj(sim, 'node-a').status.conditions[0].status).toBe(true)
+    expect(nodeObj(sim, 'node-a').status.conditions[0].status).toBe('True')
   })
 
   it('power restored: heartbeats resume and the desk flips Ready back', () => {
     const sim = mkSim({ nodeCount: 1 })
     stepUntil(sim, () => lease(sim, 'node-a').spec.renewedAt > 0, 900, 'up')
     sim.setKnob('chaosNodeFail', 'node-a')
-    stepUntil(sim, () => !nodeObj(sim, 'node-a').status.conditions[0].status, 3600, 'down')
+    stepUntil(sim, () => nodeObj(sim, 'node-a').status.conditions[0].status !== 'True', 3600, 'down')
     sim.setKnob('chaosNodeFail', 'none')
-    stepUntil(sim, () => nodeObj(sim, 'node-a').status.conditions[0].status, 3600, 'healed')
+    stepUntil(sim, () => nodeObj(sim, 'node-a').status.conditions[0].status === 'True', 3600, 'healed')
     expect(sim.state.events.some((e) => e.reason === 'NodeReady')).toBe(true)
+    // Recovery also lifts the unreachable taints.
+    expect(nodeObj(sim, 'node-a').spec.taints.length).toBe(0)
   })
 })

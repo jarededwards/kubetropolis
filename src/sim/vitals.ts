@@ -33,7 +33,7 @@ export function derive(state: SimState): void {
 
   let nodesReady = 0
   for (const obj of state.etcd.objects.values()) {
-    if (obj.kind === 'Node' && obj.status.conditions[0]?.status) nodesReady += 1
+    if (obj.kind === 'Node' && obj.status.conditions[0]?.status === 'True') nodesReady += 1
   }
 
   let maxLag = 0
