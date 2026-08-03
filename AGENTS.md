@@ -28,6 +28,9 @@ screenshot (below).
 - Stage views through `window.KUBETROPOLIS` in preJS, e.g.
   `KUBETROPOLIS.bus.emit('focus',{id:'records.vault'})` — never poke internals.
 - Screenshots are CI/scratch artifacts. NEVER commit PNGs to the repo.
+- Stage multi-step screenshots with node-side CDP sequences (see
+  tools/cdp-run.mjs SEQUENCE); headless Chrome throttles page timers ~25s,
+  so page-side setTimeout staging silently misfires.
 
 ## Dev server
 `npm run dev` → http://localhost:5173 (vite, host mode). `npm run preview`

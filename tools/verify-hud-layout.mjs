@@ -284,6 +284,37 @@ if (!scenario.spoke) fail('scenario', 'card kicker missing the SCENARIO voice')
 if (!scenario.oneCard) fail('scenario', 'a second narration card exists')
 if (!scenario.ended) fail('scenario', 'Escape did not end the scenario')
 
+/* M5 — tour: the invitation chip yields to the tour; the tour speaks through
+ * THE card with six progress chips; Escape ends it and the card hides. */
+const tour = await evaluate(`(async () => {
+  const K = window.KUBETROPOLIS
+  const chipBefore = !!document.querySelector('[data-tour-invitation]')
+  K.bus.emit('tour:start', {})
+  await new Promise((r) => setTimeout(r, 700))
+  const chipGone = !document.querySelector('[data-tour-invitation]')
+  const card = document.querySelector('.tour-narrate')
+  const spoke = (card?.textContent || '').includes('TOUR · CHAPTER 1/6')
+  const chips = card ? card.querySelectorAll('.ts').length : 0
+  const oneCard = document.querySelectorAll('.tour-narrate').length === 1
+  const r = card?.getBoundingClientRect?.()
+  const vh = window.innerHeight
+  const lowerThird = !!r && r.top >= vh * 0.5 && r.bottom <= vh + 1
+  const escPayload = { handled: false }
+  K.bus.emit('ui:escape', escPayload)
+  await new Promise((r2) => setTimeout(r2, 250))
+  const ended = escPayload.handled && !(K.tour?.state?.().running)
+  const hidden = !card || !card.classList.contains('is-live')
+  return { chipBefore, chipGone, spoke, chips, oneCard, lowerThird, ended, hidden }
+})()`)
+if (!tour.chipBefore) fail('tour', 'first-run invitation chip missing on a fresh profile')
+if (!tour.chipGone) fail('tour', 'invitation chip survived tour start')
+if (!tour.spoke) fail('tour', 'card kicker missing the TOUR voice')
+if (tour.chips !== 6) fail('tour', `expected 6 progress chips, saw ${tour.chips}`)
+if (!tour.oneCard) fail('tour', 'a second narration card exists')
+if (!tour.lowerThird) fail('tour', 'tour card is not in the lower third')
+if (!tour.ended) fail('tour', 'Escape did not end the tour')
+if (!tour.hidden) fail('tour', 'card stayed visible after the tour ended')
+
 removeProcessCleanup()
 await run.cleanup()
 
@@ -292,5 +323,5 @@ if (failures.length > 0) {
   for (const f of failures) console.error('  ' + f)
   process.exit(1)
 }
-console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help + picker + trace card + scenarios')
+console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help + picker + trace card + scenarios + tour')
 process.exit(0)
