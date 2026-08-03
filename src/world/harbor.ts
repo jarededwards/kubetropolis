@@ -145,6 +145,53 @@ export function createHarbor(ctx: WorldContext): WorldModule {
   foundation.position.set(lAt[0], 0.8, lAt[2])
   group.add(foundation)
 
+  /* --- the Lighthouse itself (M7) -------------------------------------------
+   * Rises when the OPERATOR files construction — an admitted row alone builds
+   * nothing (a law with no inspector is paper). Scale-Y animates the build. */
+  const TOWER_H = 22
+  const lighthouse = new THREE.Group()
+  lighthouse.name = 'harbor.lighthouse.tower'
+  lighthouse.position.set(lAt[0], 1.6, lAt[2])
+  lighthouse.visible = false
+  group.add(lighthouse)
+
+  const towerBody = new THREE.Mesh(theme.cyl(2.2, 3.4, TOWER_H, 12), theme.mat('harbor'))
+  towerBody.position.y = TOWER_H / 2
+  lighthouse.add(towerBody)
+  const gallery = new THREE.Mesh(theme.cyl(3.0, 3.0, 1.2, 12), theme.mat('ink'))
+  gallery.position.y = TOWER_H + 0.6
+  lighthouse.add(gallery)
+  const lampRoom = new THREE.Mesh(theme.box(3.4, 3, 3.4), theme.mat('ink'))
+  lampRoom.position.y = TOWER_H + 2.7
+  lighthouse.add(lampRoom)
+  const lamp = new THREE.Mesh(theme.box(1.6, 1.6, 1.6), theme.neon(COLOR.crd, 2.0))
+  lamp.position.y = TOWER_H + 2.7
+  lamp.visible = false
+  lighthouse.add(lamp)
+
+  // the sweeping beam: two opposed blades riding a pivot at lamp height
+  const beamPivot = new THREE.Group()
+  beamPivot.position.y = TOWER_H + 2.7
+  beamPivot.visible = false
+  lighthouse.add(beamPivot)
+  const beamGeo = theme.box(46, 0.5, 1.6)
+  for (const dir of [1, -1]) {
+    const blade = new THREE.Mesh(beamGeo, theme.neon(COLOR.crd, 1.35))
+    blade.position.x = dir * 24
+    ;(blade.material as THREE.MeshBasicMaterial).transparent = true
+    ;(blade.material as THREE.MeshBasicMaterial).opacity = 0.55
+    blade.raycast = () => {}
+    beamPivot.add(blade)
+  }
+
+  // fuel gauge: a thin column beside the tower, height = street-truth fuel
+  const gaugeBack = new THREE.Mesh(theme.box(1.1, 12, 1.1), theme.mat('ink'))
+  gaugeBack.position.set(5.4, 6, 0)
+  lighthouse.add(gaugeBack)
+  const gaugeFill = new THREE.Mesh(theme.box(0.7, 12, 0.7), theme.neon(COLOR.harbor, 1.0))
+  gaugeFill.position.set(5.4, 6, 0)
+  lighthouse.add(gaugeFill)
+
   /* --- the operator's shack ------------------------------------------------- */
   const oAt = ANCHOR['operator.shack']
   const shack = new THREE.Mesh(theme.box(9, 6, 7), theme.mat('ink'))
@@ -212,14 +259,26 @@ export function createHarbor(ctx: WorldContext): WorldModule {
 
   ctx.register({
     id: 'harbor.lighthouse',
-    name: 'Lighthouse foundation',
-    role: 'a permit nobody has filed — the Lighthouse arrives with CRDs (M7)',
+    name: 'Lighthouse',
+    role: 'a custom resource — real only while its operator keeps it real',
     kind: 'concept',
     district: 'harbor',
-    object: foundation,
-    tier: 2,
-    focus: { target: [lAt[0], 3, lAt[2]], distance: 42, dir: [0.7, 0.34, 0.62] },
+    object: lighthouse,
+    tier: 1,
+    focus: { target: [lAt[0], 12, lAt[2]], distance: 56, dir: [0.7, 0.34, 0.62] },
+    labelAt: [lAt[0], TOWER_H + 9, lAt[2]],
     color: COLOR.crd,
+    readout: (s: SimState) => {
+      const b = s.beacon
+      if (!b) {
+        return s.vitals.crdRegistered
+          ? 'foundation only — apply the Lighthouse, then staff the shack'
+          : 'foundation only — no law permits this building yet'
+      }
+      if (!b.built) return 'under construction — the operator filed the build'
+      if (!b.lit) return `dark · fuel ${b.fuelPct.toFixed(0)}%`
+      return `lit · fuel ${b.fuelPct.toFixed(0)}% · beam ${b.beamRpm} rpm`
+    },
   })
 
   ctx.register({
@@ -232,7 +291,10 @@ export function createHarbor(ctx: WorldContext): WorldModule {
     tier: 1,
     focus: { target: [oAt[0], 4, oAt[2]], distance: 40, dir: [0.6, 0.4, 0.7] },
     color: COLOR.crd,
-    readout: (s: SimState) => (s.operatorRunning ? 'staffed — reconciling' : 'dark. nobody holds this watch'),
+    readout: (s: SimState) =>
+      s.operatorRunning
+        ? `staffed · reconciles ${s.controllers.lighthouse.reconciles} · courier ×1.6 (longest road)`
+        : 'dark. nobody holds this watch',
   })
 
   /* --- fog bank (chaosRegistryOutage) --------------------------------------- */
@@ -278,6 +340,25 @@ export function createHarbor(ctx: WorldContext): WorldModule {
     ship.rotation.z = Math.sin(t * 0.4) * 0.012
 
     shackLamp.visible = s.operatorRunning
+
+    // the Lighthouse: rises with construction, sweeps while lit, reads fuel
+    const b = s.beacon
+    lighthouse.visible = b !== null
+    if (b) {
+      const progress = b.built
+        ? 1
+        : Math.max(0.08, 1 - Math.max(0, b.buildingUntil - s.now) / 6)
+      lighthouse.scale.y = progress
+      lamp.visible = b.lit
+      beamPivot.visible = b.lit
+      if (b.lit) {
+        // rpm → radians per model second; ride the same clock as the city
+        beamPivot.rotation.y = (t * b.beamRpm * Math.PI * 2) / 60
+      }
+      const fuel = Math.max(0.02, b.fuelPct / 100)
+      gaugeFill.scale.y = fuel
+      gaugeFill.position.y = 6 - (12 * (1 - fuel)) / 2
+    }
 
     // the fog bank rolls in when the registry is unreachable
     fog.visible = !s.harbor.reachable
