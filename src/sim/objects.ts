@@ -9,11 +9,14 @@ import type {
   CustomResourceDefinitionObj,
   DeploymentObj,
   EndpointSliceObj,
+  HpaObj,
   K8sObject,
   LeaseObj,
   LighthouseObj,
   NodeObj,
+  PdbObj,
   PodObj,
+  QuotaObj,
   ReplicaSetObj,
   ServiceObj,
   SimState,
@@ -285,6 +288,76 @@ export function mkEndpointSlice(state: SimState, svc: ServiceObj): EndpointSlice
 /** The single demo Service (M6 models one service + one slice). */
 export function getService(state: SimState): ServiceObj | undefined {
   for (const o of state.etcd.objects.values()) if (o.kind === 'Service') return o
+  return undefined
+}
+
+/* ---------------------------------------------------------------------------
+ * Policy objects (M8): the budget, the quota, the autoscaler's charter.
+ * -------------------------------------------------------------------------*/
+
+/** The neighborhood's permit cap while chaosQuotaLow is on. */
+export const QUOTA_LOW_PODS = 8
+
+export function mkPdb(state: SimState, minAvailable: number): PdbObj {
+  return {
+    uid: nextUid(state),
+    kind: 'PodDisruptionBudget',
+    name: 'shopfront-pdb',
+    namespace: DEFAULT_NAMESPACE,
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: { selector: { app: 'shopfront' }, minAvailable },
+    status: { blockedEvictions: 0 },
+  }
+}
+
+export function mkQuota(state: SimState, hardPods: number): QuotaObj {
+  return {
+    uid: nextUid(state),
+    kind: 'ResourceQuota',
+    name: 'shops-quota',
+    namespace: DEFAULT_NAMESPACE,
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: { hardPods },
+    status: { usedPods: 0 },
+  }
+}
+
+export function mkHpa(
+  state: SimState,
+  spec: { targetDeployment: string; targetCpuPct: number; min: number; max: number },
+): HpaObj {
+  return {
+    uid: nextUid(state),
+    kind: 'HorizontalPodAutoscaler',
+    name: `${spec.targetDeployment}-hpa`,
+    namespace: DEFAULT_NAMESPACE,
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: { ...spec },
+    status: { currentUtilizationPct: 0, desired: 0, recommendations: [] },
+  }
+}
+
+export function getPdb(state: SimState): PdbObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'PodDisruptionBudget') return o
+  return undefined
+}
+
+export function getQuota(state: SimState): QuotaObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'ResourceQuota') return o
+  return undefined
+}
+
+export function getHpa(state: SimState): HpaObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'HorizontalPodAutoscaler') return o
   return undefined
 }
 

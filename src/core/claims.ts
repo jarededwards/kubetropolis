@@ -58,6 +58,20 @@ export const CLAIM_VALUES = {
     periodSeconds: 5,
     graceSeconds: 50,
   },
+  hpa: {
+    syncSeconds: 15,
+    /** deadband: recommendations within ±10% of 1.0 never move the pen */
+    tolerancePct: 10,
+    /** downscale stabilization: the desk ignores its own lower numbers this long */
+    stabilizationSeconds: 300,
+  },
+  disruption: {
+    /** HTTP status an eviction blocked by a PodDisruptionBudget returns */
+    evictionBlockedStatus: 429,
+    /** the drain client's retry backoff toward a blocked budget, model seconds */
+    modelRetryBaseSeconds: 5,
+    modelRetryCapSeconds: 30,
+  },
   kubeletHeartbeat: {
     /** Lease renewal — every 10s, a quarter of the 40s lease duration */
     leaseRenewSeconds: 10,
@@ -189,6 +203,57 @@ export const CLAIMS: readonly K8sClaim[] = [
     coverage: 'exact',
     values: 'crashLoop',
     usedBy: ['sim/kubelet'],
+  },
+  {
+    id: 'hpa.sync',
+    statement:
+      `The HorizontalPodAutoscaler control loop runs every ${CLAIM_VALUES.hpa.syncSeconds}s by default.`,
+    source: `${K8S_DOCS}reference/command-line-tools-reference/kube-controller-manager/`,
+    coverage: 'exact',
+    values: 'hpa',
+    usedBy: ['sim/controllers/hpa'],
+  },
+  {
+    id: 'hpa.formula',
+    statement:
+      'desiredReplicas = ceil(currentReplicas × currentUtilization / targetUtilization), '
+      + `with a ${CLAIM_VALUES.hpa.tolerancePct}% tolerance inside which no scaling happens.`,
+    source: `${K8S_DOCS}tasks/run-application/horizontal-pod-autoscale/`,
+    coverage: 'exact',
+    values: 'hpa',
+    usedBy: ['sim/controllers/hpa'],
+  },
+  {
+    id: 'hpa.stabilization',
+    statement:
+      `Scale-down uses a stabilization window (default ${CLAIM_VALUES.hpa.stabilizationSeconds}s): `
+      + 'the controller acts on the HIGHEST recommendation inside the window, so brief dips never demolish.',
+    source: `${K8S_DOCS}tasks/run-application/horizontal-pod-autoscale/`,
+    coverage: 'exact',
+    values: 'hpa',
+    usedBy: ['sim/controllers/hpa'],
+  },
+  {
+    id: 'drain.pdb429',
+    statement:
+      'API-initiated eviction respects PodDisruptionBudgets: an eviction that would violate '
+      + `the budget is refused with HTTP ${CLAIM_VALUES.disruption.evictionBlockedStatus}, and the drain retries.`,
+    source: `${K8S_DOCS}concepts/scheduling-eviction/api-eviction/`,
+    coverage: 'exact',
+    values: 'disruption',
+    usedBy: ['sim/apiserver'],
+  },
+  {
+    id: 'taint.eviction',
+    statement:
+      'NoExecute taint-based eviction is performed by the node lifecycle controller directly — '
+      + 'it is not an API-initiated eviction, so PodDisruptionBudgets do not protect against node loss.',
+    source: `${K8S_DOCS}concepts/scheduling-eviction/taint-and-toleration/#taint-based-evictions`,
+    coverage: 'modeled',
+    modelNote:
+      'After the toleration countdown the model removes the pod row in one NodeLost write; real pods '
+      + 'linger Terminating until the Node object goes away. FIDELITY.md discloses the shortcut.',
+    usedBy: ['sim/nodes'],
   },
   {
     id: 'pod.restartPolicy',

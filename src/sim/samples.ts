@@ -8,12 +8,16 @@ import type {
   ApplyLighthouseCommand,
   ApplyPodCommand,
   ApplyServiceCommand,
+  ChaosNodeTarget,
   DeletePodCommand,
+  DrainNodeCommand,
   RollbackImageCommand,
   ScaleCommand,
   SetImageCommand,
   SetLimitCommand,
+  SetNodePowerCommand,
   SetOperatorCommand,
+  UncordonNodeCommand,
 } from '../core/types'
 
 export const DEMO_IMAGE_V1 = 'harbor.city/shopfront:v1'
@@ -53,5 +57,14 @@ export const samples = {
   },
   setOperator(running: boolean): SetOperatorCommand {
     return { kind: 'SetOperator', running }
+  },
+  nodePower(node: ChaosNodeTarget, powered: boolean): SetNodePowerCommand {
+    return { kind: 'SetNodePower', node, powered }
+  },
+  drain(node = 'node-b'): DrainNodeCommand {
+    return { kind: 'DrainNode', node }
+  },
+  uncordon(node = 'node-b'): UncordonNodeCommand {
+    return { kind: 'UncordonNode', node }
   },
 } as const

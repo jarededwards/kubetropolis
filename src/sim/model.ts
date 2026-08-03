@@ -52,6 +52,8 @@ import { reconcileReplicaSet } from './controllers/replicaset'
 import { stepTraffic } from './traffic'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
 import { stepKubelets } from './kubelet'
+import { ensurePolicyObjects, stepDrains, stepTaintManager } from './lifecycle'
+import { stepHpa } from './controllers/hpa'
 import { applyNodeChaos, stepLeaseRenewals, stepNodeLifecycle } from './nodes'
 import { stepScheduler } from './scheduler'
 import { DEFAULT_SEED, initState } from './state'
@@ -77,6 +79,20 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     // 1 — intake (the scenario engine files its paperwork like any client)
     stepScenario(state, (cmd) => runCommand(state, cmd))
     while (intake.length > 0) runCommand(state, intake.shift()!)
+    // Dials that declare policy become paperwork (M8): budget, quota, charter.
+    ensurePolicyObjects(state)
+    // Quota-bounced ReplicaSet keys retry on their backoff — not sulking.
+    if (state.quotaRetries.length > 0) {
+      const due = state.quotaRetries.filter((q) => q.at <= state.now)
+      if (due.length > 0) {
+        state.quotaRetries = state.quotaRetries.filter((q) => q.at > state.now)
+        for (const q of due) {
+          if (!state.controllers.replicaset.workqueue.includes(q.rsUid)) {
+            state.controllers.replicaset.workqueue.push(q.rsUid)
+          }
+        }
+      }
+    }
 
     // 2..4 — the permit hall and the vault
     stepAdmission(state)
@@ -106,7 +122,12 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
       }
       runController(state, 'lighthouse', reconcileLighthouse)
     }
+    // The autoscaler desk: one division, every fifteen model seconds.
+    stepHpa(state)
     stepNodeLifecycle(state)
+    // The second clock (NoExecute countdowns) and any drain in progress.
+    stepTaintManager(state)
+    stepDrains(state)
 
     // 6 — zoning
     stepScheduler(state)
@@ -418,6 +439,68 @@ function runCommand(state: SimState, command: Command): void {
       state.controllers.lighthouse.workqueue.length = 0
       pushEvent(state, 'Normal', 'OperatorStopped', 'operator.shack', 'the shack goes dark — nothing holds the watch now')
     }
+    return
+  }
+
+  if (command.kind === 'SetNodePower') {
+    const wasCut = state.knobs.chaosNodeFail
+    if (command.powered) {
+      if (wasCut === command.node) state.knobs.chaosNodeFail = 'none'
+      pushEvent(state, 'Normal', 'PowerRestored', command.node, 'the district hums back to life; heartbeats resume')
+    } else {
+      state.knobs.chaosNodeFail = command.node
+      pushEvent(
+        state,
+        'Warning',
+        'PowerCut',
+        command.node,
+        'no kubectl verb does this — the lights go out and the foreman goes silent',
+      )
+    }
+    return
+  }
+
+  if (command.kind === 'DrainNode') {
+    if (state.drains.some((d) => d.node === command.node && d.phase === 'evicting')) return
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Node' && obj.name === command.node) {
+        const next = clone(obj)
+        next.spec.unschedulable = true
+        submit(state, 'update', next, 'kubectl')
+        state.drains = state.drains.filter((d) => d.node !== command.node)
+        state.drains.push({
+          node: command.node,
+          phase: 'evicting',
+          denied: 0,
+          nextAttemptAt: state.now + 1,
+          backoffSec: 0,
+        })
+        pushEvent(
+          state,
+          'Normal',
+          'DrainStarted',
+          command.node,
+          'cordoned — no new permits; existing buildings leave by eviction paperwork',
+        )
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.node, 'no such district to drain')
+    return
+  }
+
+  if (command.kind === 'UncordonNode') {
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Node' && obj.name === command.node) {
+        const next = clone(obj)
+        next.spec.unschedulable = false
+        submit(state, 'update', next, 'kubectl')
+        state.drains = state.drains.filter((d) => d.node !== command.node)
+        pushEvent(state, 'Normal', 'Uncordoned', command.node, 'the gate reopens; zoning may place here again')
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.node, 'no such district to uncordon')
     return
   }
 

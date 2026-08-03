@@ -21,7 +21,8 @@ import type {
   WatchReg,
 } from '../core/types'
 import { proposeWrite } from './etcd'
-import { getCrd, pushEvent, rng01, uidSeqOf } from './objects'
+import { onEvictionBlocked } from './lifecycle'
+import { getCrd, getPdb, getQuota, pushEvent, rng01, uidSeqOf } from './objects'
 
 /**
  * The shack's courier walks the shore road — deliberately the LONGEST watch
@@ -38,6 +39,12 @@ export function submit(state: SimState, verb: ApiVerb, obj: K8sObject, source: C
   // own arrival is emitted at intake (model.runCommand) on apply.in.
   if (source === 'sched') {
     state.flowOutbox.push({ route: 'bind.zoning', kind: 'bindWrite' })
+  } else if (source.startsWith('drain.')) {
+    // Eviction paperwork walks the eviction road toward the permit hall.
+    const letter = source.slice('drain.node-'.length)
+    if (letter === 'a' || letter === 'b' || letter === 'c') {
+      state.flowOutbox.push({ route: `evict.${letter}`, kind: 'evict' })
+    }
   } else if (source.startsWith('ctl.')) {
     state.flowOutbox.push({ route: 'workorder.inspect', kind: 'workOrder' })
   } else if (source.startsWith('kubelet.')) {
@@ -75,15 +82,92 @@ export function registerWatcher(state: SimState, subscriber: ComponentId, kinds:
 
 export function stepAdmission(state: SimState): void {
   const still: ApiRequest[] = []
+  let acceptedPodCreates = 0
   for (const req of state.api.inflight) {
     if (req.stage === 'authn') {
       req.stage = 'mutating'
       still.push(req)
     } else if (req.stage === 'mutating') {
       if (req.verb === 'create') stampDefaults(state, req)
+      req.stage = 'quota'
+      still.push(req)
+    } else if (req.stage === 'quota') {
+      // The neighborhood counts objects, not intentions — but it RESERVES at
+      // the counter: permits already accepted and still travelling to the
+      // vault count against the cap, or a batch of filings would slip past it
+      // together. (Real quota admission makes the same atomic reservation.)
+      const quota = getQuota(state)
+      if (req.verb === 'create' && req.obj.kind === 'Pod' && quota) {
+        let podCount = acceptedPodCreates
+        for (const o of state.etcd.objects.values()) if (o.kind === 'Pod') podCount += 1
+        for (const r of state.api.inflight) {
+          if (r !== req && r.verb === 'create' && r.obj.kind === 'Pod'
+            && (r.stage === 'validating' || r.stage === 'toEtcd')) podCount += 1
+        }
+        for (const prop of state.etcd.proposals) {
+          if (prop.req.verb === 'create' && prop.req.obj.kind === 'Pod') podCount += 1
+        }
+        if (podCount >= quota.spec.hardPods) {
+          state.api.rejected += 1
+          state.counters.quotaRejected += 1
+          pushEvent(
+            state,
+            'Warning',
+            'FailedCreate',
+            req.obj.name,
+            `quota exceeded: pods ${podCount}/${quota.spec.hardPods} in ${req.obj.namespace}`,
+          )
+          if (req.source === 'ctl.replicaset' && req.obj.ownerUid) {
+            const expect = state.controllers.replicaset.expect.get(req.obj.ownerUid)
+            if (expect) expect.creates = expect.creates.filter((u) => u !== req.obj.uid)
+            const rsUid = req.obj.ownerUid
+            if (!state.quotaRetries.some((q) => q.rsUid === rsUid)) {
+              state.quotaRetries.push({ rsUid, at: state.now + 8 })
+            }
+          }
+          continue
+        }
+        acceptedPodCreates += 1
+      }
       req.stage = 'validating'
       still.push(req)
     } else if (req.stage === 'validating') {
+      // The Eviction API: a budget may refuse (HTTP 429 analog — claims:
+      // drain.pdb429). An allowed eviction becomes an ordinary graceful
+      // delete; the kubelet still runs the dance, because the node is alive.
+      if (req.verb === 'evict' && req.obj.kind === 'Pod') {
+        const pod = req.obj as PodObj
+        const pdb = getPdb(state)
+        if (pdb && matchesSelector(pod, pdb.spec.selector)) {
+          let readyMatching = 0
+          for (const o of state.etcd.objects.values()) {
+            if (o.kind !== 'Pod') continue
+            const p = o as PodObj
+            if (p.deletionTimestamp === undefined && p.status.ready && matchesSelector(p, pdb.spec.selector)) {
+              readyMatching += 1
+            }
+          }
+          if (readyMatching - 1 < pdb.spec.minAvailable) {
+            state.api.rejected += 1
+            pushEvent(
+              state,
+              'Warning',
+              'EvictionBlocked',
+              pod.name,
+              `${CLAIM_VALUES.disruption.evictionBlockedStatus}: budget keeps ${pdb.spec.minAvailable} available, `
+                + `only ${readyMatching} ready — DENIED, retry later`,
+            )
+            const nextPdb = structuredClone(pdb)
+            nextPdb.status.blockedEvictions += 1
+            // The denial itself is a status write, filed like everything else
+            // (lands next tick — the stamp has to travel too).
+            still.push({ verb: 'updateStatus', obj: nextPdb, source: 'apiserver', stage: 'toEtcd', mutations: [] })
+            onEvictionBlocked(state, pod)
+            continue
+          }
+        }
+        req.verb = 'delete'
+      }
       // A CR whose kind nobody registered stops here — the real error shape,
       // verbatim (claims: crd.registration). A law must exist before a permit
       // can cite it.
@@ -328,6 +412,13 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
 
 function enqueue(queue: string[], uid: string): void {
   if (!queue.includes(uid)) queue.push(uid)
+}
+
+function matchesSelector(pod: PodObj, selector: Record<string, string>): boolean {
+  for (const [k, v] of Object.entries(selector)) {
+    if (pod.labels[k] !== v) return false
+  }
+  return true
 }
 
 /** Deterministic pod pick for DeletePod by exact name, else newest by uid. */

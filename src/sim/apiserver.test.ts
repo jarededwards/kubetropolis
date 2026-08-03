@@ -6,13 +6,15 @@ import { samples } from './model'
 import { mkSim, podNamed, step, stepUntil } from './test-support'
 
 describe('API server — the permit hall', () => {
-  it('advances one admission stage per tick: authn → mutating → validating → toEtcd', () => {
+  it('advances one admission stage per tick: authn → mutating → quota → validating → toEtcd', () => {
     const sim = mkSim()
     sim.apply(samples.pod('staged'))
     // Heartbeat renewals share the hall; track only the kubectl request.
     const mine = () => sim.state.api.inflight.find((r) => r.source === 'kubectl')
     step(sim, 1)
     expect(mine()?.stage).toBe('mutating')
+    step(sim, 1)
+    expect(mine()?.stage).toBe('quota')
     step(sim, 1)
     expect(mine()?.stage).toBe('validating')
     step(sim, 1)

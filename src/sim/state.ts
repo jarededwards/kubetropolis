@@ -76,6 +76,10 @@ export function initState(seed: number, knobs: Knobs): SimState {
     },
     operatorRunning: false,
     beacon: null,
+    drains: [],
+    evictions: new Map(),
+    quotaRetries: [],
+    counters: { drainDenied: 0, quotaRejected: 0, hpaLastDesired: 0 },
     podOwners: new Map(),
     events: [],
     trace: null,
@@ -97,6 +101,10 @@ export function initState(seed: number, knobs: Knobs): SimState {
       reqRefusedTotal: 0,
       cpuUsedM: 0,
       crdRegistered: false,
+      evictionsArmed: 0,
+      drainDeniedTotal: 0,
+      quotaRejectedTotal: 0,
+      hpaLastDesired: 0,
     },
   }
 
