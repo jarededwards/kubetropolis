@@ -37,7 +37,10 @@ issue tracking if hosting is chosen). Full plan:
       flake); scenario engine w/ beats + non-modal operator decisions; picker
       at 5 actions w/ live victim receipts; fog bank + hash tints + overflow
       strips; KNOB-AUDIT live (24 knobs); 232/232 tests.
-- [ ] **M5 — Tour v1** — runner + chapters 1–5 & 10 with on-camera actions.
+- [x] **M5 — Tour v1** *(2026-08-03)* — six chapters live (orientation, apply,
+      reconcile w/ on-camera delete+self-heal, zoning, rollout w/ undo button,
+      closing) on the one narration card; your-turn gating proven; first-run
+      invitation chip; byte-identical tour determinism; 239/239 tests.
 - [ ] **M6 — Services, ingress, traffic** — readiness-gated request flows;
       delete-race trace variant; chapter 6.
 - [ ] **M7 — CRD & operator (core scope; never the cut)** — Lighthouse
