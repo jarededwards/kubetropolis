@@ -92,3 +92,13 @@ ever needed: ClusterCity, KubeCity.
   in the PR #3 description).
 - Light bake (tools/bake-indirect.mjs) against final geometry — deferred.
 - Day-theme beam falloff polish if the v1 gradient needs tuning.
+
+## v1.0.0 — released 2026-08-03
+
+Review panel (fidelity · operations · reader-experience) each returned
+FIX-FIRST; all blocking findings across the three reports plus the product
+owner's independent Apache-2.0 audit were resolved on feat/v1-punchlist
+(merged as PR #3). Panel consensus on the core: no wrong claim values;
+pacing arithmetic, eviction asymmetry, preStop-inside-grace, and the
+delete-race mechanics verified correct. Remaining advisories live in the
+v1.1 backlog above.
