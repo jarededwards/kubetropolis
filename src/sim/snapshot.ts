@@ -1,0 +1,111 @@
+/* Kubetropolis sim — deterministic, JSON-stable snapshots.
+ *
+ * Maps and Sets serialize as sorted arrays so that deep-equality between two
+ * runs is meaningful regardless of insertion order. This is the surface the
+ * determinism test compares and a future save/restore reads.
+ */
+
+import type { SimState } from '../core/types'
+
+export function toSnapshot(state: SimState): unknown {
+  return {
+    tick: state.tick,
+    now: round6(state.now),
+    rngState: state.rngState,
+    uidSeq: state.uidSeq,
+    knobs: { ...state.knobs },
+    scenario: state.scenario,
+    etcd: {
+      revision: state.etcd.revision,
+      compactedRevision: state.etcd.compactedRevision,
+      log: state.etcd.log.map((r) => ({ ...r })),
+      objects: [...state.etcd.objects.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([uid, obj]) => [uid, obj]),
+      members: state.etcd.members.map((m) => ({ ...m })),
+      leader: state.etcd.leader,
+      fsyncMs: state.etcd.fsyncMs,
+      proposals: state.etcd.proposals.map((p) => ({
+        readyAt: round6(p.readyAt),
+        verb: p.req.verb,
+        uid: p.req.obj.uid,
+      })),
+      nextCompactionAt: round6(state.etcd.nextCompactionAt),
+    },
+    api: {
+      inflight: state.api.inflight.map((r) => ({
+        verb: r.verb,
+        uid: r.obj.uid,
+        stage: r.stage,
+        source: r.source,
+        mutations: [...r.mutations],
+      })),
+      rejected: state.api.rejected,
+      watchers: state.api.watchers.map((w) => ({
+        subscriber: w.subscriber,
+        kinds: [...w.kinds],
+        sentRev: w.sentRev,
+        needsRelist: w.needsRelist,
+        backlog: w.backlog.map((b) => ({ rev: b.rec.rev, visibleAt: round6(b.visibleAt) })),
+      })),
+    },
+    sched: {
+      queue: [...state.sched.queue],
+      backoff: state.sched.backoff.map((b) => ({ uid: b.uid, until: round6(b.until) })),
+      cycle: state.sched.cycle ?? null,
+      scheduled: state.sched.scheduled,
+    },
+    controllers: Object.fromEntries(
+      Object.entries(state.controllers).map(([id, c]) => [
+        id,
+        {
+          workqueue: [...c.workqueue],
+          sentRev: c.sentRev,
+          reconciles: c.reconciles,
+          nextResyncAt: round6(c.nextResyncAt),
+          nextPeriodicAt: c.nextPeriodicAt === undefined ? null : round6(c.nextPeriodicAt),
+          expect: [...c.expect.entries()]
+            .sort(([a], [b]) => (a < b ? -1 : 1))
+            .map(([uid, e]) => [uid, { ...e }]),
+        },
+      ]),
+    ),
+    nodes: state.nodes.map((n) => ({
+      id: n.id,
+      objUid: n.objUid,
+      powered: n.powered,
+      allocatable: { ...n.allocatable },
+      allocated: { ...n.allocated },
+      leaseRenewAt: round6(n.leaseRenewAt),
+      imageCache: [...n.imageCache].sort(),
+      pulls: n.pulls.map((p) => ({ ...p, doneMB: round6(p.doneMB) })),
+      kubelet: {
+        sentRev: n.kubelet.sentRev,
+        syncQueue: [...n.kubelet.syncQueue],
+        nextSweepAt: round6(n.kubelet.nextSweepAt),
+        runtime: [...n.kubelet.runtime.entries()]
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([uid, rt]) => [uid, roundRuntime(rt)]),
+      },
+    })),
+    harbor: { ...state.harbor },
+    traffic: { ...state.traffic },
+    operatorRunning: state.operatorRunning,
+    podOwners: [...state.podOwners.entries()].sort(([a], [b]) => (a < b ? -1 : 1)),
+    events: state.events.map((e) => ({ ...e, at: round6(e.at) })),
+    trace: state.trace,
+    vitals: { ...state.vitals },
+  }
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6
+}
+
+function roundRuntime(rt: object): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(rt)) {
+    out[k] = typeof v === 'number' ? round6(v) : v
+  }
+  return out
+}
