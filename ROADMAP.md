@@ -17,9 +17,13 @@ issue tracking if hosting is chosen). Full plan:
       scheduler, deployment/replicaset controllers, kubelet lifecycle);
       `KUBETROPOLIS.sim.apply(samplePod)` walks Pending→Running in a debug
       overlay; ~200 tests; determinism deep-equal; claims scaffold live.
-- [ ] **M2 — First-light city** — real layout.ts geography; civic block, 3 node
-      districts, harbor; pods as instanced buildings; picking/labels/inspector;
-      verify-hud-layout in loop; 60fps @ 100 pods.
+- [x] **M2 — First-light city** *(2026-08-03)* — Kubetropolis geography live
+      (civic campus + vault-at-origin, zoning, 6 inspector desks, 3 node
+      districts + reserves, harbor w/ crane+ship+breakwater); pods = 3 draw
+      calls citywide; HUD/panel/search/help + layout verifier @ 4 viewports;
+      probe 96/96 pods ready @ GPU-equiv 60fps; 169/169 tests. Postgres TV
+      geography deleted. Art-pass debts logged for M8 (water read, top-bar
+      cramp, decal mirroring, 36-pad visual cap).
 - [ ] **M3 — Flagship trace** — the 12-stop narrated `kubectl apply -f pod.yaml`
       journey; step/slow/live; claims spine enforcing.
 - [ ] **M4 — Workloads act** — scale/rolling-update/delete-pod actions;
