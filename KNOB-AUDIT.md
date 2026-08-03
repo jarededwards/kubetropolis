@@ -37,9 +37,7 @@ surface until wired.
 | `reqCpuCostM` | power drawn per served request (HPA's future metric) | knob-response.test |
 | `chaosReadinessFlake` (M6 extension) | flaking apps fail USERS in the same windows — misroute blips until the listing drops | services.test; scenario readiness-flake |
 
-Dormant (typed, mechanics land later): `hpa*` (M8), `pdb*` (M8),
-`chaosEtcdSlow`/`chaosLeaderFlap` (partially wired: fsync chaos affects
-commits — etcd.test), `chaosQuotaLow` (M8).
+~~Dormant~~ **All knobs wired as of M8** — the table below closes the ledger.
 
 ## M7 — no new knobs, one new switch
 
@@ -49,3 +47,19 @@ rail's staff button). Its observable is the entire M7 arc — shack lamp,
 construction, beam, fuel gauge, refuel truck — proven by
 `src/sim/lighthouse.test.ts` and the rail hold in `m7-dark-breakwater.png` /
 `m7-ignition.png`.
+
+## M8 — self-healing and scale (every remaining knob wired)
+
+| Knob | Visible effect | Proven by |
+|---|---|---|
+| `unreachableTolerationSec` | the LIVE countdown dial: armed clocks blink faster as `armedAt + dial` nears; shortening it mid-run shortens running countdowns (dial, not history — FIDELITY) | m8-chaos.test (two clocks); scenario node-notready decision |
+| `nodeGraceSec` | how long City Hall waits before Unknown + taints | m8-chaos.test; nodes.test |
+| `hpaEnabled` | the autoscaler desk receives its charter: lamp on, paper spike renders | m8-chaos.test (autoscaler desk); scenario hpa-flap |
+| `hpaTargetCpuPct` | the division's denominator — lower target, earlier scale-up | m8-chaos.test |
+| `hpaMin` / `hpaMax` | fences the desk cannot write past | controllers/hpa.ts clamp; m8-chaos.test peak ≤ max |
+| `pdbEnabled` | a budget object is filed; drains start bouncing | m8-chaos.test (blocked drain) |
+| `pdbMinAvailable` | the availability floor evictions may not breach | m8-chaos.test (3-vs-3 deadlock, frees at 5) |
+| `chaosQuotaLow` | quota kiosk caps pods at 8; FailedCreate stamps + retry-forever | m8-chaos.test; scenario quota-exhausted |
+| `chaosNodeFail` (M8 extension) | full arc now: blackout → Unknown → taints → countdown rings → NodeLost → rebuild elsewhere; meters read street-truth zero | m8-chaos.test; scenario node-notready; `m8-blackout.png` |
+| `chaosEtcdSlow` | fsync 500 model-ms; permit-hall queue + courier lag climb | etcd.test; scenario etcd-slow |
+| `chaosLeaderFlap` | 4-second elections every 25 model-s steal the pen; vault leader lamp hops; commits stall in bursts while the city keeps serving | etcd.ts flap windows; scenario etcd-slow |

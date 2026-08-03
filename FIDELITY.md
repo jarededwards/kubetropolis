@@ -186,4 +186,40 @@ number of fixed steps, never their size.
   watchable. An operator killed mid-refuel leaves the run incomplete until
   re-staffed.
 
+## Modeled simplifications (M8 — self-healing and scale)
+
+- **NodeLost removal.** After a toleration countdown expires on an
+  unreachable district, the model removes the pod row in ONE write with a
+  `NodeLost` event. Real pods linger `Terminating` until the Node object is
+  deleted or someone forces the issue — no kubelet is alive to confirm the
+  grace dance. The lesson (nothing rebuilds until the countdown runs out;
+  then the contract rebuilds elsewhere) survives; the limbo does not.
+- **Taint eviction skips the budget — faithfully.** NoExecute eviction is the
+  node lifecycle controller acting directly; it is NOT an API-initiated
+  eviction, so PodDisruptionBudgets do not protect against node loss
+  (claims: `taint.eviction`). The model preserves this asymmetry on purpose:
+  drains bounce off budgets with 429s; node loss does not ask.
+- **The countdown is a dial, not history.** Armed countdowns expire at
+  `armedAt + unreachableTolerationSec` read LIVE, so the self-heal chapter can
+  shorten a running clock on camera. The stamped 300s stays on the admission
+  receipt; the dial is the teaching surface.
+- **Quota reserves at the counter.** The quota stage counts committed pods
+  PLUS accepted-but-uncommitted creates (in-flight past the kiosk, and
+  proposals in the vault queue) — the atomic reservation real quota admission
+  performs. Only pod COUNT is modeled; cpu/memory quota is not.
+- **Drain is a modeled client loop** (cordon, evict one building at a time,
+  retry 429s with 5→30s doubling model backoff). Real kubectl drain
+  parallelism, `--ignore-daemonsets` semantics (no DaemonSets exist here),
+  and grace flags are out of scope.
+- **HPA metrics are synthesized.** Utilization is the model's per-pod CPU EMA
+  from live request traffic — there is no metrics-server, no scrape interval,
+  no container-level metrics. The formula, deadband, sync period, and
+  downscale stabilization window carry their real defaults (claims:
+  `hpa.formula`, `hpa.sync`, `hpa.stabilization`); scale-up has no
+  stabilization window, matching the real default.
+- **Leader flap is a caricature with honest consequences**: deterministic
+  4-second elections every 25 model seconds during which nothing commits and
+  the leader lamp hops chambers. No raft internals, no split brain — only the
+  true observable: a cluster that cannot write can still serve.
+
 *This file grows as the model does; it is enforced by the claims spine from M3.*
