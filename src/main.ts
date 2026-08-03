@@ -10,6 +10,7 @@ import * as THREE from 'three'
 
 import './styles/tokens.css'
 import './styles/ui.css'
+import './styles/tour.css'
 
 import { createBus } from './core/bus'
 import { Registry } from './core/registry'
@@ -48,11 +49,13 @@ import { createNodeDistricts } from './world/node-district'
 import { CITY } from './world/layout'
 
 import { BOOT_STEPS, failBoot, finishBoot, presentBootStep } from './ui/boot'
+import { createActionPicker } from './ui/action-picker'
 import { createDebugOverlay } from './ui/debug-overlay'
 import { createHelp } from './ui/help'
 import { createHud } from './ui/hud'
 import { createInspector } from './ui/panel'
 import { createSearch } from './ui/search'
+import { createTraceUi } from './ui/trace-ui'
 import type { UiContext, UiModule } from './ui/uikit'
 
 const bootEl = document.getElementById('boot')
@@ -162,7 +165,14 @@ async function boot(): Promise<void> {
     getQuality: () => gfx.quality,
     getFlowStats: () => ({ active: flows.active, dropped: flows.dropped }),
   }
-  const ui: UiModule[] = [createHud(uiCtx), createInspector(uiCtx), createSearch(uiCtx), createHelp(uiCtx)]
+  const ui: UiModule[] = [
+    createHud(uiCtx),
+    createInspector(uiCtx),
+    createSearch(uiCtx),
+    createHelp(uiCtx),
+    createActionPicker(uiCtx),
+    createTraceUi(uiCtx),
+  ]
 
   bus.on('ui:theme-toggle', () => {
     setThemeMode(themeMode() === 'day' ? 'night' : 'day')

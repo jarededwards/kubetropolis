@@ -22,6 +22,12 @@ export function createHud(ctx: UiContext): UiModule {
   const nodes = el('span', { class: 'hud-chip pg-mono', text: '0 nodes' })
   const fps = el('span', { class: 'hud-perf pg-mono', text: '' })
 
+  const runBtn = el('button', {
+    class: 'pg-btn',
+    text: 'run a command ▸',
+    title: 'Trace a kubectl command through the city (R)',
+    on: { click: () => bus.emit('trace:open', { source: 'button' }) },
+  })
   const themeBtn = el('button', {
     class: 'pg-btn pg-btn--ghost',
     text: 'day/night',
@@ -56,6 +62,7 @@ export function createHud(ctx: UiContext): UiModule {
       'span',
       { class: 'hud-right', style: { display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' } },
       fps,
+      runBtn,
       searchBtn,
       themeBtn,
       helpBtn,
