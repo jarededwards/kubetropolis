@@ -47,7 +47,7 @@ import {
 import type { ReplicaSetObj } from '../core/types'
 import { reconcileDeployment } from './controllers/deployment'
 import { reconcileEndpointSlice } from './controllers/endpointslice'
-import { reconcileLighthouse, stepBeacon } from './controllers/lighthouse'
+import { DEVICE_SWEEP_SECONDS, reconcileLighthouse, stepBeacon } from './controllers/lighthouse'
 import { reconcileReplicaSet } from './controllers/replicaset'
 import { stepTraffic } from './traffic'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
@@ -92,7 +92,20 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     runController(state, 'replicaset', reconcileReplicaSet)
     runController(state, 'endpointslice', reconcileEndpointSlice)
     // The shack works only while someone staffs it — the whole M7 lesson.
-    if (state.operatorRunning) runController(state, 'lighthouse', reconcileLighthouse)
+    if (state.operatorRunning) {
+      // Device sweep (RequeueAfter idiom): the keeper checks the lamp on a
+      // short cadence — construction, the fuel gauge, truck arrivals.
+      const ctl = state.controllers.lighthouse
+      if (ctl.nextPeriodicAt === undefined || state.now >= ctl.nextPeriodicAt) {
+        for (const o of state.etcd.objects.values()) {
+          if (o.kind === 'Lighthouse' && !ctl.workqueue.includes(o.uid)) {
+            ctl.workqueue.push(o.uid)
+          }
+        }
+        ctl.nextPeriodicAt = state.now + DEVICE_SWEEP_SECONDS
+      }
+      runController(state, 'lighthouse', reconcileLighthouse)
+    }
     stepNodeLifecycle(state)
 
     // 6 — zoning

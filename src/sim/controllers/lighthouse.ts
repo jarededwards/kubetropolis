@@ -20,6 +20,14 @@ import { clone, pushEvent } from '../objects'
 
 const LH = CLAIM_VALUES.modelLighthouse
 
+/**
+ * The keeper looks at his lamp: while staffed, the operator sweeps its DEVICE
+ * on a short cadence (the controller-runtime RequeueAfter idiom) — that is
+ * how construction completion, the fuel gauge, and truck arrivals are
+ * noticed without spamming the vault. Sim-internal cadence, not reader copy.
+ */
+export const DEVICE_SWEEP_SECONDS = 2
+
 /** Street truth → published status, in buckets (no write amplification). */
 function bucket(pct: number): number {
   return Math.max(0, Math.round(pct / LH.statusBucketPct) * LH.statusBucketPct)
