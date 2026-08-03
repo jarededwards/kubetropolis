@@ -47,8 +47,11 @@ issue tracking if hosting is chosen). Full plan:
       counters; the 9-stop delete rail w/ concurrent WITHDRAW+SIGTERM stops
       and the try-the-fix preStop button (misroutes 21 → 0, test-asserted);
       ch6 + rollout-surge + readiness-flake scenarios; 259/259 tests.
-- [ ] **M7 — CRD & operator (core scope; never the cut)** — Lighthouse
-      CRD/CR/operator, dark-breakwater moment; chapter 9.
+- [x] **M7 — CRD & operator** *(2026-08-03, merged as PR #1)* — CRDs
+      first-class (real rejection error pre-CRD; City Hall permits window);
+      apply-crd + apply-lighthouse rails w/ held SHACK stop + staff button;
+      operator on the provably longest road; fuel drift vs stale ledger;
+      ch. 7 + paper-law scenario; 274/274 tests.
 - [ ] **M8 — Chaos + polish** — drain/kill node, HPA; chapters 7–8; five more
       scenarios; light bake; mobile pass; perf 500 pods; review panel reports.
 
