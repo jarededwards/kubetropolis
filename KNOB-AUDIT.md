@@ -40,3 +40,12 @@ surface until wired.
 Dormant (typed, mechanics land later): `hpa*` (M8), `pdb*` (M8),
 `chaosEtcdSlow`/`chaosLeaderFlap` (partially wired: fsync chaos affects
 commits — etcd.test), `chaosQuotaLow` (M8).
+
+## M7 — no new knobs, one new switch
+
+The operator is deliberately NOT a knob: it is a process, toggled by the
+`SetOperator` command (shack inspector panel, tour, scenario decision, or the
+rail's staff button). Its observable is the entire M7 arc — shack lamp,
+construction, beam, fuel gauge, refuel truck — proven by
+`src/sim/lighthouse.test.ts` and the rail hold in `m7-dark-breakwater.png` /
+`m7-ignition.png`.

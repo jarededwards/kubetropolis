@@ -159,4 +159,31 @@ number of fixed steps, never their size.
 - **Repeat-delete nuance**: a second delete with a SHORTER grace period (which
   real Kubernetes honors) is not modeled; repeat deletes are no-ops.
 
+## Modeled simplifications (M7 — CRDs and the operator)
+
+- **CRD validation is kind-match only.** Registration checks that the kind
+  exists; there is no OpenAPI schema validation, no versions, no conversion
+  webhooks, no structural-schema rules. The rejection error is the real shape
+  ("no matches for kind"), produced by the validating stage.
+- **One CRD, one custom kind.** The model registers exactly
+  `lighthouses.harbor.city`; the general machinery (any group/kind) is not
+  modeled.
+- **The operator's device loop.** While staffed, the operator sweeps its
+  device every 2 model seconds (the controller-runtime RequeueAfter idiom) in
+  addition to its watch — that is how construction completion, the fuel
+  gauge, and refuel-truck arrivals are noticed. Status publishes in 5%
+  buckets to avoid write amplification.
+- **Street truth vs. published status.** The physical beacon (fuel, flame)
+  lives outside the vault, like a container's working set; only the operator
+  publishes status. Unstaffed, the ledger goes stale while the beacon drifts
+  dark — deliberate, and the lesson.
+- **Construction requires the operator.** An admitted Lighthouse row with no
+  operator builds nothing (a law with no inspector is paper); the tower
+  rises when the operator first reconciles it, the way pods become concrete
+  only when a kubelet acts.
+- **Fuel physics are inventions** (decay rate, refuel threshold, travel
+  time) — claimed as model values (`model.lighthouse`), chosen so drift is
+  watchable. An operator killed mid-refuel leaves the run incomplete until
+  re-staffed.
+
 *This file grows as the model does; it is enforced by the claims spine from M3.*
