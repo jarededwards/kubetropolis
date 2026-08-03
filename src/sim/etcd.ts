@@ -39,6 +39,12 @@ export function stepEtcdCommits(state: SimState): ChangeRecord[] {
     const rec = applyWrite(state, p.req)
     if (rec) committed.push(rec)
   }
+  // Stamped paperwork going down the stair into the vault. Lease renewals are
+  // constant background and would bury the signal.
+  const visible = committed.reduce((n, r) => (r.kind === 'Lease' ? n : n + 1), 0)
+  if (visible > 0) {
+    state.flowOutbox.push({ route: 'apply.commit', kind: 'commit', count: Math.min(visible, 4) })
+  }
   return committed
 }
 

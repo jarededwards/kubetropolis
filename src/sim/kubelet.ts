@@ -55,6 +55,14 @@ function stepPulls(state: SimState, node: NodeSim, dt: number): void {
   const rate = state.knobs.chaosRegistryOutage ? 0 : state.knobs.registryMBps
   const finished: typeof node.pulls = []
   for (const pull of node.pulls.slice(0, concurrent)) {
+    if (pull.startedAt === undefined) {
+      // the crane engages: cargo leaves the harbor for this district
+      pull.startedAt = state.now
+      const letter = node.id.slice('node-'.length)
+      if (letter === 'a' || letter === 'b' || letter === 'c') {
+        state.flowOutbox.push({ route: `pull.${letter}`, kind: 'imagePull' })
+      }
+    }
     pull.doneMB += rate * dt
     if (pull.doneMB >= pull.totalMB) finished.push(pull)
   }
@@ -115,6 +123,13 @@ function syncPod(state: SimState, node: NodeSim, pod: PodObj): void {
   }
 }
 
+/** Deterministic small hash for layer counts — no rngState perturbation. */
+function hashImage(image: string): number {
+  let h = 0
+  for (let i = 0; i < image.length; i++) h = (h * 31 + image.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+
 /** waiting → (pull?) → creating; publishes each transition as a status write. */
 function startupPath(state: SimState, node: NodeSim, pod: PodObj): void {
   // A second delivery can arrive before our own status write commits; the
@@ -125,7 +140,29 @@ function startupPath(state: SimState, node: NodeSim, pod: PodObj): void {
   if (mustPull) {
     const queued = node.pulls.some((p) => p.podUid === pod.uid)
     if (!queued) {
-      node.pulls.push({ image, podUid: pod.uid, totalMB: state.knobs.imageSizeMB, doneMB: 0 })
+      // Layer arithmetic (FIDELITY.md: modeled): a cached image of the same
+      // repository shares its base layers, so only the top layers transfer.
+      // This is why a v2 rollout pulls fast on districts that ran v1.
+      const repo = image.split(':')[0]
+      const layersTotal = 5 + (hashImage(image) % 3)
+      let sharedBase = false
+      for (const cached of node.imageCache) {
+        if (cached.split(':')[0] === repo) {
+          sharedBase = true
+          break
+        }
+      }
+      const layersHit = sharedBase ? layersTotal - 2 : 0
+      const totalMB = state.knobs.imageSizeMB * ((layersTotal - layersHit) / layersTotal)
+      node.pulls.push({
+        image,
+        podUid: pod.uid,
+        totalMB,
+        doneMB: 0,
+        queuedAt: state.now,
+        layersTotal,
+        layersHit,
+      })
       publishStatus(state, node, pod, (p) => {
         p.status.container.state = 'pulling'
         p.status.container.reason = 'ContainerCreating'

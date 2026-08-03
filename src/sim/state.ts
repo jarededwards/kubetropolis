@@ -69,6 +69,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
     podOwners: new Map(),
     events: [],
     trace: null,
+    flowOutbox: [],
     vitals: {
       podsTotal: 0,
       podsRunning: 0,

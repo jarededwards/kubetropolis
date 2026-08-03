@@ -26,6 +26,22 @@ import { rng01, uidSeqOf } from './objects'
 /** Enter the permit hall. kubectl, desks, and foremen all queue here alike. */
 export function submit(state: SimState, verb: ApiVerb, obj: K8sObject, source: ComponentId): void {
   state.api.inflight.push({ verb, obj, source, stage: 'authn', mutations: [] })
+
+  // Paperwork on the road: the WRITER travels to the permit desk. kubectl's
+  // own arrival is emitted at intake (model.runCommand) on apply.in.
+  if (source === 'sched') {
+    state.flowOutbox.push({ route: 'bind.zoning', kind: 'bindWrite' })
+  } else if (source.startsWith('ctl.')) {
+    state.flowOutbox.push({ route: 'workorder.inspect', kind: 'workOrder' })
+  } else if (source.startsWith('kubelet.')) {
+    const letter = source.slice('kubelet.node-'.length)
+    if (letter === 'a' || letter === 'b' || letter === 'c') {
+      state.flowOutbox.push({
+        route: `heartbeat.${letter}`,
+        kind: obj.kind === 'Lease' ? 'heartbeat' : 'workOrder',
+      })
+    }
+  }
 }
 
 export function registerWatcher(state: SimState, subscriber: ComponentId, kinds: Kind[]): WatchReg {
@@ -122,10 +138,30 @@ export function stepWatchFanout(state: SimState, committed: ChangeRecord[]): voi
   for (const w of state.api.watchers) {
     // One commit, N couriers, N distinct roads — each at its own pace (A3).
     const visibleAt = state.now + baseSec * w.latencyFactor
+    let queued = 0
     for (const rec of committed) {
-      if (w.kinds.includes(rec.kind)) w.backlog.push({ rec, visibleAt })
+      if (w.kinds.includes(rec.kind)) {
+        w.backlog.push({ rec, visibleAt })
+        queued += 1
+      }
+    }
+    if (queued > 0) {
+      const route = courierRouteFor(w.subscriber)
+      if (route) state.flowOutbox.push({ route, kind: 'watchCourier' })
     }
   }
+}
+
+/** Which road this subscriber's courier walks. */
+function courierRouteFor(subscriber: ComponentId): string | null {
+  if (subscriber === 'sched') return 'watch.sched'
+  if (subscriber.startsWith('ctl.')) return 'watch.inspect'
+  if (subscriber === 'operator') return 'watch.operator'
+  if (subscriber.startsWith('kubelet.node-')) {
+    const letter = subscriber.slice('kubelet.node-'.length)
+    if (letter === 'a' || letter === 'b' || letter === 'c') return `watch.kubelet.${letter}`
+  }
+  return null
 }
 
 export function drainWatchers(state: SimState): void {

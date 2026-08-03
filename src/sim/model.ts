@@ -37,6 +37,8 @@ import { applyNodeChaos, stepLeaseRenewals, stepNodeLifecycle } from './nodes'
 import { stepScheduler } from './scheduler'
 import { DEFAULT_SEED, initState } from './state'
 import { toSnapshot } from './snapshot'
+import { actionFor } from './actions'
+import { armTrace, endTrace, resumeTraceStep, setTracePlayback, updateTrace } from './trace'
 import { derive } from './vitals'
 
 export { samples } from './samples'
@@ -83,6 +85,15 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     state.now += dt
     state.tick += 1
     derive(state)
+    updateTrace(state)
+
+    // flush packet emissions to the bus (transient; empty between ticks)
+    if (state.flowOutbox.length > 0) {
+      for (const f of state.flowOutbox) {
+        bus.emit('flow', { route: f.route, kind: f.kind, count: f.count })
+      }
+      state.flowOutbox.length = 0
+    }
   }
 
   function runController(
@@ -127,6 +138,21 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
       if (key === 'registryMBps') state.harbor.mbps = state.knobs.registryMBps
       if (key === 'reqPerSec') state.traffic.reqPerSec = state.knobs.reqPerSec
     },
+    startTrace(action, playback) {
+      const def = actionFor(action)
+      if (!def?.traceable) return
+      armTrace(state, action, def.subject, playback)
+      intake.push(def.mkCommand())
+    },
+    traceNext() {
+      resumeTraceStep(state)
+    },
+    setTracePlayback(playback) {
+      setTracePlayback(state, playback)
+    },
+    endTrace() {
+      endTrace(state)
+    },
     toSnapshot() {
       return toSnapshot(state)
     },
@@ -141,6 +167,8 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
 
 /** Commands translate into API writes — kubectl is just another client. */
 function runCommand(state: SimState, command: Command): void {
+  // The client's manifest travels the arrivals avenue to the permit desk.
+  state.flowOutbox.push({ route: 'apply.in', kind: 'apply' })
   if (command.kind === 'ApplyPod') {
     const pod = mkPod(state, command.name, {
       image: command.image,
