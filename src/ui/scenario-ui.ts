@@ -146,7 +146,9 @@ export function createScenarioUi(ctx: UiContext): UiModule {
     })
     card.setStages([])
     card.setTransport(transportButtons())
-    card.show()
+    // trace-mode styling is what makes the transport strip (decision buttons,
+    // end control) visible — the vendored CSS hides the strip otherwise.
+    card.show(true)
     cardOwned = true
   }
 

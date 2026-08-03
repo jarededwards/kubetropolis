@@ -48,7 +48,7 @@ export function createActionPicker(ctx: UiContext): UiModule {
                 card.setTransport([
                   el('button', { class: 'pg-btn pg-btn--ghost', text: '✕', on: { click: () => card.hide() } }),
                 ])
-                card.show()
+                card.show(true)
               }
             },
           },

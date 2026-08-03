@@ -209,7 +209,8 @@ async function boot(): Promise<void> {
     }
   })
 
-  bus.on('sim:reset', () => sim.reset())
+  // 'sim:reset' is the sim ANNOUNCING a reset (listeners rebuild caches from
+  // fresh state) — echoing it back into sim.reset() recursed to stack overflow.
   bus.on('knob', ({ key, value }) => sim.setKnob(key, value as never))
 
   const overlay = createDebugOverlay()
