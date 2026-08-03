@@ -43,13 +43,23 @@ export function createHud(ctx: UiContext): UiModule {
 
   const bar = el(
     'div',
-    { class: 'hud-bar' },
+    {
+      class: 'hud-bar',
+      style: { display: 'flex', gap: '14px', alignItems: 'center', padding: '8px 14px' },
+    },
     el('span', { class: 'hud-brand', text: 'Kubetropolis' }),
     el('span', { class: 'hud-sep' }),
     rev,
     pods,
     nodes,
-    el('span', { class: 'hud-right' }, fps, searchBtn, themeBtn, helpBtn),
+    el(
+      'span',
+      { class: 'hud-right', style: { display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' } },
+      fps,
+      searchBtn,
+      themeBtn,
+      helpBtn,
+    ),
   )
   top.appendChild(bar)
 

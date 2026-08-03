@@ -315,6 +315,19 @@ export function createControlPlane(ctx: WorldContext): WorldModule {
    * =======================================================================*/
 
   ctx.register({
+    id: 'overview.balloon',
+    name: 'The whole city',
+    role: 'one Kubernetes cluster, end to end',
+    kind: 'concept',
+    district: 'world',
+    object: group,
+    tier: 0,
+    focus: { target: [0, 0, -10], distance: 640, dir: [0.34, 0.62, 0.7] },
+    labelAt: [0, 60, -30],
+    readout: (s: SimState) => `${s.vitals.podsReady}/${s.vitals.podsTotal} pods ready · rev ${fmtNum(s.vitals.etcdRevision, 0)}`,
+  })
+
+  ctx.register({
     id: 'cityhall.permitdesk',
     name: 'City Hall',
     role: 'kube-apiserver — every request passes this desk',

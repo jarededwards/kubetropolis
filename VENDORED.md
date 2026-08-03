@@ -29,31 +29,40 @@ destinations.ts(+test) · model-helpers.ts · route-ids.ts · trace-presentation
 ## src/spine — deleted at M1 (only the Postgres claims imported it)
 
 ## src/engine
-renderer.ts(+test) **(A-light: environment texture name)** · camera.ts(+camera-controls.test) **(A: imports ../world/plan)** ·
+renderer.ts(+test) **(A: district glow anchors → records.vault/harbor.crane)** ·
+camera.ts(+camera-controls.test) **(A: imports ../world/plan; test's plaza
+ceiling constant localized)** ·
 collision.ts V **(collision.test.ts deleted: 513 lines driving the unvendored
 walk controller — returns with walk mode if ever vendored)** ·
 color-grade.ts(+test) V · flows.ts V-inert · label-detail.ts V-inert ·
-label-layout.ts(+test) V-inert · labels.ts(+labels-occlusion.test) V-inert ·
-light-shafts.ts V(+test) · picker.ts(+test) V-inert ·
+label-layout.ts(+test) V-inert · labels.ts(+labels-occlusion.test) **(A: Kubetropolis district maps; wired)** ·
+light-shafts.ts V(+test) · picker.ts(+test) **(A: district colors; wired)** ·
 roads.ts V-inert (not wired at M0: the vendored street grid follows the TV
 Postgres layout and would mislead on the island; wired at M2 with real routes) ·
-water.ts V-inert (not wired at M0: buffer-water is the plaza swim volume, not a
-sea; the harbor waterfront is M2 world-building) ·
+water.ts **(A at M2: resized to the city plan's harbor sea rectangle; the
+caller positions the group at the sea centre; Reflector visibility at low
+quality is an M8 art-pass item)** ·
 audio.ts **(A: storage key renamed; dependency of walk mode, never wired)**
 
 ## src/world
-layout.ts **(TV → M2: full Kubetropolis geography replaces Postgres city)** ·
-sky.ts(+test) **(TV: asterism/atmosphere; renamed constants at M2 art pass)** ·
-ground.ts **(A: imports ./plan)** · ground-surface.ts(+test) V · plate-fog.ts V ·
+layout.ts **(rewritten at M2: the Kubetropolis geography — civic campus,
+records pit, node districts, harbor, 16 routes; single-geography doctrine
+kept)** ·
+sky.ts(+test) **(A: elephant asterism replaced by the Beacon — lighthouse over
+an anchor, western sky)** ·
+ground.ts **(A: imports ./plan; Kubetropolis plinths/cones/decals; pit is the
+records vault cut)** · ground-surface.ts(+test) V · plate-fog.ts V ·
 **plan.ts / plan.test.ts (A: renamed copy of upstream src/world/slonik.ts —
 generic ring math kept verbatim; the elephant outline path replaced with the
 Kubetropolis island outline with western harbor bay)**
 
 ## src/ui
-uikit.ts V · boot.ts(+test) **(A: Kubetropolis boot steps; test pins the new
-ladder)** · legal.ts **(A: rewritten — K8s notice replaces EA notice)** ·
-touchpad.ts **(removed at M0: imports the unvendored walk controller and
-mode-exits; re-vendored and adapted at M2 with the HUD)**
+uikit.ts V · boot.ts(+test) **(A: 12-step Kubetropolis boot ladder)** ·
+legal.ts **(A: rewritten — K8s notice replaces EA notice)** ·
+touchpad.ts **(still out: imports the unvendored walk controller; the M2 HUD
+shipped without it — mobile gesture pass lands at M8)** ·
+**Original Kubetropolis files (not vendored): hud.ts, panel.ts, search.ts,
+help.ts, debug-overlay.ts — written lean against uikit + the vendored CSS.**
 
 ## src/styles
 All 12 CSS files V (retint via tokens at M2).
@@ -70,7 +79,9 @@ cdp-profile.mjs **(A: profile root renamed; profileIsInUse gains a `ps`
 fallback for hosts without /proc — macOS)** ·
 cdp-run.mjs V · reap.sh **(A: env-overridable gate path)** ·
 reap-cdp-profiles.mjs V · bake-indirect.mjs **(A: gate path + probe)** ·
-verify-hud-layout.mjs **(A: probe renamed; selectors re-pointed at M2)**
+verify-hud-layout.mjs **(A at M2: rewritten lean on the upstream CDP harness —
+viewport/vitals/one-panel/inspector/help invariants; upstream's fuller
+label-budget instrument returns as the HUD grows)**
 
 ## Not vendored (deliberate)
 src/sim/** (Postgres model — rewritten as Kubernetes) · src/world districts
