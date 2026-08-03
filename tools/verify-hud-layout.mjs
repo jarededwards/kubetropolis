@@ -291,14 +291,28 @@ const scenario = await evaluate(`(async () => {
   const escPayload = { handled: false }
   K.bus.emit('ui:escape', escPayload)
   const closed = !!overlay && overlay.hidden
+  /* Frame-locked wait: beats land on model time via the rAF loop; fixed
+   * timers race it on slow (SwiftShader) hosts. */
+  const frame = () => new Promise((raf) => requestAnimationFrame(() => requestAnimationFrame(raf)))
+  const until = async (cond, tries) => {
+    for (let i = 0; i < tries; i++) {
+      if (cond()) return true
+      await frame()
+    }
+    return cond()
+  }
   K.sim.startScenario('steady-state')
-  await new Promise((r) => setTimeout(r, 900))
+  await until(() => {
+    const c = document.querySelector('.tour-narrate')
+    return !!c && c.classList.contains('is-live') && (c.textContent || '').includes('SCENARIO')
+  }, 150)
   const card = document.querySelector('.tour-narrate')
   const live = !!card && card.classList.contains('is-live')
   const spoke = (card?.textContent || '').includes('SCENARIO')
   const oneCard = document.querySelectorAll('.tour-narrate').length === 1
   const endPayload = { handled: false }
   K.bus.emit('ui:escape', endPayload)
+  await until(() => K.sim.state.scenarioRun === null, 30)
   const ended = endPayload.handled && K.sim.state.scenarioRun === null
   return { openOk, closed, live, spoke, oneCard, ended }
 })()`)
