@@ -52,8 +52,13 @@ issue tracking if hosting is chosen). Full plan:
       apply-crd + apply-lighthouse rails w/ held SHACK stop + staff button;
       operator on the provably longest road; fuel drift vs stale ledger;
       ch. 7 + paper-law scenario; 274/274 tests.
-- [ ] **M8 — Chaos + polish** — drain/kill node, HPA; chapters 7–8; five more
-      scenarios; light bake; mobile pass; perf 500 pods; review panel reports.
+- [x] **M8 — Chaos + polish** *(2026-08-03)* — taint-based eviction w/ the
+      honest two clocks (grace ~50s, toleration dial live); drain vs PDB
+      (429 DENIED stamps; node-loss never consults the budget — drain does);
+      HPA desk w/ 5m stabilization spike; quota admission; leader flap w/
+      the-city-still-serves; ten-chapter tour; 12 scenarios; 10 actions;
+      500 pods @ GPU-class fps; native touch; five art debts paid;
+      282/282 tests. Light bake deferred (ROADMAP note).
 
 Budget pressure valve: trim M8 extras (etcd-slow/quota scenarios, bake polish).
 Never M7.
