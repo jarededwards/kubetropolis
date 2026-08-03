@@ -1,0 +1,36 @@
+{
+  "name": "kubetropolis",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "An independent, non-commercial educational visualization of Kubernetes internals. Not affiliated with The Linux Foundation or CNCF.",
+  "keywords": [
+    "kubernetes",
+    "visualization",
+    "3d",
+    "threejs",
+    "education",
+    "webgl",
+    "control-plane"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "bake:light": "node tools/bake-indirect.mjs",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:layout": "node tools/verify-hud-layout.mjs",
+    "test:watch": "vitest",
+    "preview": "vite preview --port 4173"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "three": "^0.185.0"
+  }
+}

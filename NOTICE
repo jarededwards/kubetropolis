@@ -1,3 +1,26 @@
+Kubetropolis
+Copyright 2026 Jared Edwards
+
+This product includes software derived from PGSimCity
+(https://github.com/NikolayS/PGSimCity), Copyright 2026 Nikolay Samokhvalov,
+licensed under the Apache License, Version 2.0. Per-file provenance is
+recorded in VENDORED.md. The upstream NOTICE is reproduced below.
+
+Kubernetes is a registered trademark of The Linux Foundation in the United
+States and other countries. Kubetropolis is an independent educational
+project: it is not affiliated with, sponsored by, or endorsed by The Linux
+Foundation or the Cloud Native Computing Foundation. Kubernetes naming used
+in this project refers only to the technology itself, and the Kubernetes
+logo is not used.
+
+SimCity is a trademark of Electronic Arts Inc. Kubetropolis is not
+affiliated with, sponsored by, endorsed by, or approved by Electronic Arts
+Inc., and contains no SimCity code, assets, artwork, logos, characters,
+audio, or game content.
+
+----------------------------------------------------------------------
+Upstream NOTICE (PGSimCity):
+
 PGSimCity
 Copyright 2026 Nikolay Samokhvalov
 
@@ -21,7 +44,5 @@ This product bundles third-party software distributed under its own license
 terms; see the dependency manifests (package.json, package-lock.json) and the
 license files shipped inside each dependency for details.
 
-The optional query surface bundles PGlite, copyright Electric DB Limited,
-licensed under the Apache License, Version 2.0. PGlite contains PostgreSQL code
-compiled to WebAssembly; PostgreSQL and modifications to it are distributed
-under the PostgreSQL License.
+(The upstream paragraph describing the optional PGlite query surface is
+omitted: Kubetropolis does not bundle PGlite.)
