@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { Bus, CameraApi, CameraMode, FocusSpec } from '../core/types'
 import { clamp, clamp01, damp, easeInOutCubic, lerp, reduceMotion } from '../core/util'
 import { ANCHOR } from '../world/layout'
-import { PLAN_UP, sampleOutline } from '../world/slonik'
+import { PLAN_UP, sampleOutline } from '../world/plan'
 
 /* ============================================================================
  * THE CAMERA RIG

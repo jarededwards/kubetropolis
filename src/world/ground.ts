@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/world/ground.ts @ 6d2c854 (Apache-2.0, © 2026
+ * Nikolay Samokhvalov). Modified for Kubetropolis: plate outline import
+ * re-pointed to world/plan (island); userData key renamed. */
 import * as THREE from 'three'
 import { destinationForDistrict } from '../core/destinations'
 import { ATMOSPHERE, COLOR, DAY_PALETTE, atmosphere, mixHex } from '../core/theme'
@@ -18,8 +21,8 @@ import {
   ringArea2,
   sampleOutline,
   writeShape,
-} from './slonik'
-import type { PlanBounds } from './slonik'
+} from './plan'
+import type { PlanBounds } from './plan'
 import type { DistrictId, SimState, WorldContext, WorldFactory, WorldModule } from '../core/types'
 
 export function worldGroundReadout(s: SimState): string {
@@ -752,7 +755,7 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
   const collisionBoxes = [...rimColliders]
   group.userData.collisionBoxes = collisionBoxes
   /** Published so the plate's containment of every district can be *checked*. */
-  group.userData.slonik = {
+  group.userData.island = {
     ring,
     bounds,
     contains: (x: number, z: number) => contains(ring, x, z),

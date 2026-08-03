@@ -1,90 +1,81 @@
+/* Derived from PGSimCity src/world/slonik.ts @ 6d2c854 (Apache-2.0, © 2026
+ * Nikolay Samokhvalov). Modified for Kubetropolis: the PostgreSQL elephant
+ * outline (Daniel Lundin's artwork) is replaced with an original procedural
+ * island outline; the generic ring math (sampling, containment, clearance,
+ * offsetting) is kept verbatim. */
 import * as THREE from 'three'
-import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js'
 import { ANCHOR, DISTRICT_BOUNDS } from './layout'
 
 /* ============================================================================
- * SLONIK — the shape of the ground PGSimCity stands on.
+ * THE ISLAND — the shape of the ground Kubetropolis stands on.
  *
  * The city is not reshaped. What is shaped is the *plate*: the poured slab the
- * districts are bolted to now ends in the outline of the PostgreSQL elephant.
- * Seen from an orbit it reads as an island in the void; seen straight down
- * (the `O` preset) it reads as the logo.
+ * districts are bolted to ends in an organic coastline. Seen from orbit it
+ * reads as an island in the void; seen straight down (the `O` preset) it reads
+ * as a map with a harbor.
  *
- * ---------------------------------------------------------------------------
- * THE ARTWORK
+ * The outline is original, hand-authored control-point data — no third-party
+ * artwork, no marks. Its distinguishing features:
  *
- * `LOGO_OUTLINE_D` is not a hand drawing. It is the blue fill path copied from
- * Daniel Lundin's genuine PostgreSQL elephant SVG:
+ *   - slightly elongated north–south, matching the gate→districts axis
+ *   - a concave HARBOR BAY on the west edge (the image registry's waterfront;
+ *     bay water is outside the ring, so the plate genuinely ends there)
+ *   - a small BREAKWATER SPIT hooking west at the bay's southern lip — the
+ *     future lighthouse site (M7)
  *
- *   https://upload.wikimedia.org/wikipedia/commons/2/29/Postgresql_elephant.svg
- *
- * fetched 2026-07-26, SHA-256
- * 51f93e19516081fc7d6fe6ab9bbab07abe5f7819e28016eefacea6dea691bc54.
- * The Commons file identifies Daniel Lundin as the author, PostgreSQL Global
- * Development Group as copyright holder, and the PostgreSQL 3-clause licence
- * as its redistribution terms. Slonik is also a PostgreSQL Community
- * Association of Canada trademark; this use makes no claim of endorsement.
- *
- * The source SVG contains white strokes, eyes, tusk and other interior paths.
- * They are deliberately absent here: this is the single closed blue fill path,
- * i.e. the outer silhouette only.
- *
- * three.js r0.185.1's SVGLoader.parse() returns ShapePath objects in `.paths`;
- * ShapePath.toShapes() is the current API (SVGLoader.createShapes is deprecated
- * in r185). Parsing happens once at module initialisation. There is no fetch at
- * runtime: the static bundle contains the path below.
- *
- * THE PLAN TRANSFORM
- *
- * SVG x is kept rightward and SVG y-down is flipped to world north (-Z), then
- * the mark is rigidly rotated -0.4 rad in (x,z), uniformly scaled by 2.6, and
- * translated (-340,+690). It is NOT mirrored or stretched. Thus the trunk runs
- * north/north-west across the client terminal, the head and ears sit south over
- * the standby/HA/recovery districts, and the broad face covers the main city.
+ * Control points are converted to closed Catmull-Rom cubics at module load —
+ * deterministic, no fetch, no parser. The audit at the bottom of this file
+ * fails loudly if any district or continuity anchor ever sits within 8 m of
+ * the coast (or in the water).
  * ==========================================================================*/
 
 /**
- * Outer blue fill path from the genuine SVG cited above. Keep this byte-for-byte
- * vector data rather than replacing it with hand-authored control points.
+ * Hand-authored coastline control points, world plan metres, wound clockwise
+ * from the northern tip. Consumers never read these directly; they read the
+ * sampled ring.
  */
-export const LOGO_OUTLINE_D =
-  'M402.395,271.23c-50.302,10.376-53.76-6.655-53.76-6.655c53.111-78.808,75.313-178.843,56.153-203.326c-52.27-66.785-142.752-35.2-144.262-34.38l-0.486,0.087c-9.938-2.063-21.06-3.292-33.56-3.496c-22.761-0.373-40.026,5.967-53.127,15.902c0,0-161.411-66.495-153.904,83.63c1.597,31.938,45.776,241.657,98.471,178.312c19.26-23.163,37.869-42.748,37.869-42.748c9.243,6.14,20.308,9.272,31.908,8.147l0.901-0.765c-0.28,2.876-0.152,5.689,0.361,9.019c-13.575,15.167-9.586,17.83-36.723,23.416c-27.459,5.659-11.328,15.734-0.796,18.367c12.768,3.193,42.307,7.716,62.266-20.224l-0.796,3.188c5.319,4.26,9.054,27.711,8.428,48.969c-0.626,21.259-1.044,35.854,3.147,47.254c4.191,11.4,8.368,37.05,44.042,29.406c29.809-6.388,45.256-22.942,47.405-50.555c1.525-19.631,4.976-16.729,5.194-34.28l2.768-8.309c3.192-26.611,0.507-35.196,18.872-31.203l4.463,0.392c13.517,0.615,31.208-2.174,41.591-7c22.358-10.376,35.618-27.7,13.573-23.148z'
-
-const SVG_TEXT = `<svg xmlns="http://www.w3.org/2000/svg"><path d="${LOGO_OUTLINE_D}"/></svg>`
-const SOURCE_SCALE = 2.6
-const SOURCE_ANGLE = -0.4
-const SOURCE_COS = Math.cos(SOURCE_ANGLE)
-const SOURCE_SIN = Math.sin(SOURCE_ANGLE)
-const SOURCE_TX = -340
-const SOURCE_TZ = 690
-
-/** Original SVG coordinates → world plan; a uniform rigid transform. */
-function sourceToWorld(x: number, y: number): [number, number] {
-  return [
-    SOURCE_TX + SOURCE_SCALE * (x * SOURCE_COS + y * SOURCE_SIN),
-    SOURCE_TZ + SOURCE_SCALE * (x * SOURCE_SIN - y * SOURCE_COS),
-  ]
-}
-
-/**
- * Normalised logo space → world plan. Ground dressing uses this small,
- * source-independent coordinate frame; the plate itself uses sourceToWorld().
- */
-export function logoToWorld(xe: number, ye: number): [number, number] {
-  const k = 5.3
-  return [
-    k * (xe * SOURCE_COS - ye * SOURCE_SIN),
-    k * (xe * SOURCE_SIN + ye * SOURCE_COS),
-  ]
-}
+const COAST_POINTS: readonly [number, number][] = [
+  [30, -470],    // northern tip — the gate faces this way
+  [270, -450],   // NE shoulder
+  [415, -350],
+  [430, -150],   // east coast
+  [425, 70],
+  [405, 250],
+  [310, 400],    // SE
+  [110, 455],    // south coast
+  [-90, 450],
+  [-265, 405],
+  [-385, 310],   // SW rise toward the harbor
+  [-445, 170],
+  [-455, 60],    // west coast, south of the bay
+  [-453, 30],    // breakwater root
+  [-488, 12],    // breakwater tip — lighthouse site
+  [-484, -6],    // breakwater inner face
+  [-444, -10],   // bay mouth, southern lip
+  [-402, -60],   // bay head (deepest water; ≥26 m from every anchor)
+  [-398, -120],  // bay head, northern half
+  [-448, -170],  // bay mouth, northern lip
+  [-451, -260],  // NW coast
+  [-372, -365],
+  [-215, -440],
+]
 
 /**
  * The world direction that belongs at the top of frame in the overview shot.
- * It is source SVG up (toward the ears), mapped into the world south-east.
+ * Kubetropolis is a north-up map: world north is -Z.
  */
-export const PLAN_UP: readonly [number, number] = [-SOURCE_SIN, SOURCE_COS]
+export const PLAN_UP: readonly [number, number] = [0, -1]
 
-/** One genuine SVG segment transformed into world plan coordinates. */
+/**
+ * Normalised dressing space → world plan. Ground dressing uses this small,
+ * source-independent coordinate frame; the plate itself uses the coastline.
+ */
+export function logoToWorld(xe: number, ye: number): [number, number] {
+  const k = 5.3
+  return [k * xe, k * ye]
+}
+
+/** One coastline segment in world plan coordinates. */
 export type PlanCurve =
   | { readonly kind: 'line'; readonly to: [number, number] }
   | {
@@ -94,34 +85,40 @@ export type PlanCurve =
       readonly to: [number, number]
     }
 
-const parsed = new SVGLoader().parse(SVG_TEXT)
-const sourceShapes = parsed.paths[0]?.toShapes() ?? []
-if (parsed.paths.length !== 1 || sourceShapes.length !== 1) {
-  throw new Error(`Slonik outline: expected one SVG path/shape, got ${parsed.paths.length}/${sourceShapes.length}`)
-}
-const sourceShape = sourceShapes[0]
-const firstCurve = sourceShape.curves[0]
-if (!(firstCurve instanceof THREE.LineCurve) && !(firstCurve instanceof THREE.CubicBezierCurve)) {
-  throw new Error('Slonik outline: unsupported first SVG curve')
-}
-const firstPoint = firstCurve instanceof THREE.LineCurve ? firstCurve.v1 : firstCurve.v0
-
-/** The outline as world-space SVG segments, starting from `PLAN_START`. */
-export const PLAN_START: [number, number] = sourceToWorld(firstPoint.x, firstPoint.y)
-export const PLAN_CURVES: readonly PlanCurve[] = sourceShape.curves.map((curve): PlanCurve => {
-  if (curve instanceof THREE.LineCurve) {
-    return { kind: 'line', to: sourceToWorld(curve.v2.x, curve.v2.y) }
-  }
-  if (curve instanceof THREE.CubicBezierCurve) {
-    return {
+/**
+ * Closed Catmull-Rom spline through the control points, emitted as cubic
+ * Béziers (tangent m_i = (P[i+1] − P[i−1]) / 2; c1 = P + m/3, c2 = Q − m'/3).
+ * The final cubic lands exactly on the first point, so sampleOutline() takes
+ * its closed-ring path.
+ */
+function coastCurves(points: readonly [number, number][]): {
+  start: [number, number]
+  curves: PlanCurve[]
+} {
+  const n = points.length
+  const curves: PlanCurve[] = []
+  for (let i = 0; i < n; i++) {
+    const p0 = points[(i - 1 + n) % n]
+    const p1 = points[i]
+    const p2 = points[(i + 1) % n]
+    const p3 = points[(i + 2) % n]
+    const m1: [number, number] = [(p2[0] - p0[0]) / 2, (p2[1] - p0[1]) / 2]
+    const m2: [number, number] = [(p3[0] - p1[0]) / 2, (p3[1] - p1[1]) / 2]
+    curves.push({
       kind: 'cubic',
-      c1: sourceToWorld(curve.v1.x, curve.v1.y),
-      c2: sourceToWorld(curve.v2.x, curve.v2.y),
-      to: sourceToWorld(curve.v3.x, curve.v3.y),
-    }
+      c1: [p1[0] + m1[0] / 3, p1[1] + m1[1] / 3],
+      c2: [p2[0] - m2[0] / 3, p2[1] - m2[1] / 3],
+      to: [p2[0], p2[1]],
+    })
   }
-  throw new Error(`Slonik outline: unsupported SVG curve ${curve.type}`)
-})
+  return { start: [points[0][0], points[0][1]], curves }
+}
+
+const coast = coastCurves(COAST_POINTS)
+
+/** The outline as world-space segments, starting from `PLAN_START`. */
+export const PLAN_START: [number, number] = coast.start
+export const PLAN_CURVES: readonly PlanCurve[] = coast.curves
 
 /* --------------------------------------------------------------------------
  * Sampling.
@@ -144,7 +141,7 @@ export function sampleOutline(seg = 16): Float64Array {
   let w = 2
   for (let ci = 0; ci < PLAN_CURVES.length; ci++) {
     const c = PLAN_CURVES[ci]
-    // Do not duplicate the first point when an SVG happens to close explicitly.
+    // Do not duplicate the first point when the spline closes explicitly.
     const last = ci === PLAN_CURVES.length - 1 && closesItself ? seg - 1 : seg
     for (let i = 1; i <= last; i++) {
       const t = i / seg
@@ -304,7 +301,7 @@ const CONTINUITY_ANCHORS = [
   'standbyBRecv',
 ] as const
 
-export interface SlonikContainmentAudit {
+export interface IslandContainmentAudit {
   readonly requiredClearance: number
   readonly union: PlanBounds
   readonly districtMinimum: number
@@ -318,8 +315,10 @@ export interface SlonikContainmentAudit {
  * excluded: layout.ts defines it as the whole minimap, not a physical district.
  * This runs once when the static world module loads and fails loudly if layout
  * changes ever push a district or continuity work over the kerb.
+ * (The anchor list is the vendored Postgres layout's; it is replaced wholesale
+ * with the Kubetropolis geography at M2.)
  */
-function auditContainment(): SlonikContainmentAudit {
+function auditContainment(): IslandContainmentAudit {
   const ring = sampleOutline(48)
   const union: PlanBounds = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity }
   let districtMinimum = Infinity
@@ -355,7 +354,7 @@ function auditContainment(): SlonikContainmentAudit {
 
   if (districtMinimum < REQUIRED_CLEARANCE || anchorMinimum < REQUIRED_CLEARANCE) {
     throw new Error(
-      `Slonik containment failed: district ${districtAtMinimum}=${districtMinimum.toFixed(2)} m, ` +
+      `Island containment failed: district ${districtAtMinimum}=${districtMinimum.toFixed(2)} m, ` +
         `anchor ${anchorAtMinimum}=${anchorMinimum.toFixed(2)} m; required ${REQUIRED_CLEARANCE} m`,
     )
   }
@@ -370,7 +369,7 @@ function auditContainment(): SlonikContainmentAudit {
   }
 }
 
-export const SLONIK_CONTAINMENT = auditContainment()
+export const ISLAND_CONTAINMENT = auditContainment()
 
 /* --------------------------------------------------------------------------
  * Geometry helpers.
