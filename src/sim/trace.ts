@@ -218,6 +218,20 @@ function tracedPod(state: SimState, t: TraceRecord): PodObj | undefined {
 }
 
 function refreshLive(state: SimState, t: TraceRecord): void {
+  // the admission receipt, captured while the request crosses the hall
+  if (!t.subjectUid && t.mutations.length === 0) {
+    for (const req of state.api.inflight) {
+      const name = (req.obj as { name?: string }).name
+      if (
+        req.mutations.length > 0 &&
+        name !== undefined &&
+        (name === t.subject || name.startsWith(`${t.subject}-`))
+      ) {
+        t.mutations = req.mutations.slice()
+      }
+    }
+  }
+
   // fan-out: how many couriers have DELIVERED the subject's create so far
   if (t.commitRev > 0) {
     let notified = 0
@@ -309,21 +323,9 @@ function conditionMet(state: SimState, t: TraceRecord, next: TraceStop): boolean
   switch (next) {
     case 'client':
       return true
-    case 'admission': {
-      if (t.subjectUid) return true // already past the desk
-      for (const req of state.api.inflight) {
-        const name = (req.obj as { name?: string }).name
-        if (
-          req.stage !== 'authn' &&
-          name !== undefined &&
-          (name === t.subject || name.startsWith(`${t.subject}-`))
-        ) {
-          if (req.mutations.length > 0) t.mutations = req.mutations.slice()
-          return true
-        }
-      }
-      return false
-    }
+    case 'admission':
+      // The stop is "the desk FINISHES your manifest" — the receipt must exist.
+      return t.subjectUid !== undefined || t.mutations.length > 0
     case 'etcd_commit':
       return t.subjectUid !== undefined
     case 'watch_fanout':
