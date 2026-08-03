@@ -75,6 +75,18 @@ export const NIGHT_PALETTE: Record<ColorKey, number> = {
   archive: 0xc9a227,
   toast: 0xff8f5a,
   index: 0x64ffda,
+  /* --- Kubetropolis (M2) --- */
+  civic: 0x9db4ff,
+  etcd: 0xffb03a,
+  watch: 0x8ecae6,
+  sched: 0x64ffda,
+  kubelet: 0x4fe3c1,
+  harbor: 0x5ad1ff,
+  podReady: 0x57e389,
+  podPending: 0xffd166,
+  podBackoff: 0xff8f5a,
+  podTerminating: 0xff5f6d,
+  crd: 0xb57bff,
 }
 
 /* ---------------------------------------------------------------------------
@@ -147,6 +159,19 @@ export const DAY_PALETTE: Record<ColorKey, number> = {
   /* --- type --- */
   ink: 0x18222e, // near-black: this is now ink on paper
   inkDim: 0x5d6b7a,
+
+  /* --- Kubetropolis (M2) --- */
+  civic: 0x6a63d9,
+  etcd: 0xb8720a,
+  watch: 0x5f96c4,
+  sched: 0x05a47e,
+  kubelet: 0x0e8f8c,
+  harbor: 0x0089b5,
+  podReady: 0x3f9c22,
+  podPending: 0xd18a04,
+  podBackoff: 0xc9451f,
+  podTerminating: 0xb01030,
+  crd: 0x8b2bc0,
 }
 
 export const PALETTES: Record<CuratedThemeMode, Record<ColorKey, number>> = {

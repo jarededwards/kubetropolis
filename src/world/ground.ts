@@ -263,12 +263,13 @@ interface PlinthSpec {
 /** Everything that stands on the surface. 'storage' is underground, 'planner'
  *  is in the air, 'world' is the whole map — none of them get a platform. */
 const PLINTHS: readonly PlinthSpec[] = [
-  { district: 'clients', label: destinationForDistrict('clients')?.name ?? '', color: COLOR.client, dayColor: DAY_PALETTE.client },
-  { district: 'backends', label: destinationForDistrict('backends')?.name ?? '', color: COLOR.backend, dayColor: DAY_PALETTE.backend },
-  { district: 'shmem', label: destinationForDistrict('shmem')?.name ?? '', color: COLOR.shmem, dayColor: DAY_PALETTE.shmem },
-  { district: 'wal', label: destinationForDistrict('wal')?.name ?? '', color: COLOR.wal, dayColor: DAY_PALETTE.wal },
-  { district: 'maintenance', label: destinationForDistrict('maintenance')?.name ?? '', color: COLOR.vacuum, dayColor: DAY_PALETTE.vacuum },
-  { district: 'replication', label: destinationForDistrict('replication')?.name ?? '', color: COLOR.replication, dayColor: DAY_PALETTE.replication },
+  { district: 'gate', label: destinationForDistrict('gate')?.name ?? '', color: COLOR.client, dayColor: DAY_PALETTE.client },
+  { district: 'civic', label: destinationForDistrict('civic')?.name ?? '', color: COLOR.civic, dayColor: DAY_PALETTE.civic },
+  { district: 'node-a', label: 'node-a', color: COLOR.kubelet, dayColor: DAY_PALETTE.kubelet },
+  { district: 'node-b', label: 'node-b', color: COLOR.kubelet, dayColor: DAY_PALETTE.kubelet },
+  { district: 'node-c', label: 'node-c', color: COLOR.kubelet, dayColor: DAY_PALETTE.kubelet },
+  { district: 'harbor', label: destinationForDistrict('harbor')?.name ?? '', color: COLOR.harbor, dayColor: DAY_PALETTE.harbor },
+  { district: 'ingress', label: destinationForDistrict('ingress')?.name ?? '', color: COLOR.client, dayColor: DAY_PALETTE.client },
 ]
 
 const PLINTH_H = 0.6
@@ -346,12 +347,12 @@ const EDGE_TEX_W = 128
 
 /** x, z, base radius, height, colour — a light cone standing over each district. */
 const CONES: readonly (readonly [number, number, number, number, number])[] = [
-  [ANCHOR.walVault[0], ANCHOR.walVault[2], 34, 62, COLOR.wal],
-  [ANCHOR.checkpointer[0], ANCHOR.checkpointer[2], 26, 50, COLOR.checkpoint],
-  [ANCHOR.bgWriter[0], ANCHOR.bgWriter[2], 22, 44, COLOR.bgwriter],
-  [ANCHOR.autovacLauncher[0], ANCHOR.autovacLauncher[2], 24, 46, COLOR.vacuum],
-  [ANCHOR.postmaster[0], ANCHOR.postmaster[2], 30, 56, COLOR.postmaster],
-  [ANCHOR.standby[0], ANCHOR.standby[2], 30, 54, COLOR.replication],
+  [ANCHOR['records.vault'][0], ANCHOR['records.vault'][2], 34, 62, COLOR.etcd],
+  [ANCHOR['cityhall.permitdesk'][0], ANCHOR['cityhall.permitdesk'][2], 30, 56, COLOR.civic],
+  [ANCHOR['inspectors.office'][0], ANCHOR['inspectors.office'][2], 24, 46, COLOR.checkpoint],
+  [ANCHOR['zoning.office'][0], ANCHOR['zoning.office'][2], 22, 44, COLOR.sched],
+  [ANCHOR['harbor.crane'][0], ANCHOR['harbor.crane'][2], 26, 50, COLOR.harbor],
+  [ANCHOR['node.b.foreman'][0], ANCHOR['node.b.foreman'][2], 24, 46, COLOR.kubelet],
 ]
 
 const cssHex = (c: number) => '#' + (c >>> 0).toString(16).padStart(6, '0')
@@ -772,16 +773,16 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
 
   const px = CITY.pit.x
   const pz = CITY.pit.z
-  const pitFloorY = CITY.storage.y - 8
+  const pitFloorY = CITY.vault.y - 10
   const pitDepth = -pitFloorY
 
-  // The cut edge. A hard neon line reading "storage green": this is the exact
-  // altitude at which shared memory stops and the filesystem starts.
+  // The cut edge. A hard neon line reading "ledger amber": below this line is
+  // the only truth the cluster has — the revisioned store under the plaza.
   const rimPts = new Float32Array([px, 0.07, pz, -px, 0.07, pz, -px, 0.07, -pz, px, 0.07, -pz])
   const rimGeo = new THREE.BufferGeometry()
   rimGeo.setAttribute('position', new THREE.BufferAttribute(rimPts, 3))
   geos.push(rimGeo)
-  const rimLineMat = damped(theme.line(COLOR.storage, 0.9))
+  const rimLineMat = damped(theme.line(COLOR.etcd, 0.9))
   mats.push(rimLineMat)
   const rim = new THREE.LineLoop(rimGeo, rimLineMat)
   rim.renderOrder = 4
@@ -991,8 +992,8 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
 
   // The excavation rim marks the end of PostgreSQL's own address space, not
   // the end of RAM: the kernel page cache remains volatile below this cut.
-  addDecal('POSTGRESQL ADDRESS SPACE ENDS HERE', COLOR.shmem, 0, 0.08, -CITY.pit.z - 5, 0, 180)
-  addDecal('POSTGRESQL ADDRESS SPACE ENDS HERE', COLOR.shmem, 0, 0.08, CITY.pit.z + 5, 0, 180)
+  addDecal('THE ENTIRE CLUSTER IS WRITTEN BELOW', COLOR.etcd, 0, 0.08, -CITY.pit.z - 5, 0, 180)
+  addDecal('THE ENTIRE CLUSTER IS WRITTEN BELOW', COLOR.etcd, 0, 0.08, CITY.pit.z + 5, 0, 180)
 
   for (const spec of PLINTHS) {
     const b = DISTRICT_BOUNDS[spec.district]
@@ -1001,10 +1002,8 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
     const r = clipToSolidGround(inset)
 
     if (!r) {
-      // Shared memory has no ground under it — it is a deck floating over the
-      // excavation. Lay its sign on the deck instead, clear of the buffer grid.
-      addDayZone(spec, 0, CITY.deck.top + 0.025, 0, CITY.deck.w - 2, CITY.deck.d - 2)
-      addDecal(spec.label, spec.color, 0, CITY.deck.top + 0.08, 51, 0, CITY.deck.w)
+      // A district whose footprint is all excavation lays no plinth; the
+      // records pit carries its own signage.
       continue
     }
 
@@ -1146,11 +1145,11 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
   })
 
   ctx.register({
-    id: 'world.pit',
-    name: 'The excavation',
-    role: 'where memory ends and disk begins',
+    id: 'records.pit',
+    name: 'The vault cut',
+    role: 'where the API ends and the ledger begins',
     kind: 'concept',
-    district: 'storage',
+    district: 'records',
     object: pit,
     tier: 1,
     // Drop INTO the cut. The old spec parked the camera at distance 320 above
@@ -1159,7 +1158,7 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
     // and the filesystem underneath is what fills the frame.
     focus: { target: [0, -40, -10], distance: 200, dir: [0.26, 0.2, 0.94] },
     labelAt: [0, -6, -CITY.pit.z],
-    color: COLOR.storage,
+    color: COLOR.etcd,
     readout: worldPitReadout,
   })
 

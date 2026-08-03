@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/core/destinations.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the eight
+ * navigable places are the Kubernetes city's districts. */
 import type { DistrictId } from './types'
 
 export interface Destination {
@@ -16,19 +19,14 @@ export interface Destination {
  * free to name the specific building at the destination.
  */
 export const DESTINATIONS: readonly Destination[] = [
-  { district: 'clients', id: 'client.pool', name: 'Clients', shortName: 'Clients' },
-  { district: 'backends', id: 'backend.row', name: 'Backends', shortName: 'Backends' },
-  {
-    district: 'shmem',
-    id: 'shared.buffers',
-    name: 'Buffer pool (shared_buffers)',
-    shortName: 'Buffer pool',
-  },
-  { district: 'wal', id: 'wal.vault', name: 'WAL', shortName: 'WAL' },
-  { district: 'storage', id: 'storage.datadir', name: 'Storage', shortName: 'Storage' },
-  { district: 'planner', id: 'planner.lab', name: 'Query lab', shortName: 'Query lab' },
-  { district: 'maintenance', id: 'checkpointer', name: 'Maintenance', shortName: 'Maint.' },
-  { district: 'replication', id: 'replica.standby', name: 'Standby', shortName: 'Standby' },
+  { district: 'gate', id: 'client.terminal', name: 'Client terminal', shortName: 'kubectl' },
+  { district: 'civic', id: 'cityhall.permitdesk', name: 'City Hall (kube-apiserver)', shortName: 'City Hall' },
+  { district: 'records', id: 'records.vault', name: 'Hall of Records (etcd)', shortName: 'etcd' },
+  { district: 'zoning', id: 'zoning.maptable', name: 'Zoning Office (kube-scheduler)', shortName: 'Zoning' },
+  { district: 'inspectors', id: 'inspectors.office', name: 'Office of Inspectors (controllers)', shortName: 'Inspectors' },
+  { district: 'node-b', id: 'node.b.foreman', name: 'Node districts (kubelets)', shortName: 'Nodes' },
+  { district: 'harbor', id: 'harbor.crane', name: 'Harbor (image registry)', shortName: 'Harbor' },
+  { district: 'ingress', id: 'service.junction', name: 'Service junction', shortName: 'Services' },
 ] as const
 
 const BY_DISTRICT = new Map<DistrictId, Destination>(

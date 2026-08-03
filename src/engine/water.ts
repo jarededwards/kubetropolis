@@ -4,6 +4,7 @@ import { atmosphere } from '../core/theme'
 import type { QualityLevel, QualitySettings } from '../core/types'
 import { damp, makeRng } from '../core/util'
 import { CITY } from '../world/layout'
+/* Derived file: see header of world/layout.ts; water resized for the harbor sea (M2). */
 
 export interface BufferWaterApi {
   group: THREE.Group
@@ -21,9 +22,13 @@ export interface BufferWaterOptions {
   camera?: THREE.Camera
 }
 
-const SPAN = (CITY.buf.grid - 1) * CITY.buf.pitch + CITY.buf.tile
-const SURFACE_Y = CITY.buf.baseY + CITY.buf.maxRise + 0.4
-const BOTTOM_Y = CITY.buf.baseY
+/* Kubetropolis (M2): this volume is the harbor sea, sized by the city plan's
+ * sea rectangle. The caller positions the returned group at the sea centre. */
+const SPAN_X = CITY.harbor.sea.x1 - CITY.harbor.sea.x0
+const SPAN_Z = CITY.harbor.sea.z1 - CITY.harbor.sea.z0
+const SPAN = Math.min(SPAN_X, SPAN_Z)
+const SURFACE_Y = CITY.harbor.waterY
+const BOTTOM_Y = SURFACE_Y - 9
 const DEPTH = SURFACE_Y - BOTTOM_Y
 const RIPPLE_COUNT = 6
 const RIPPLE_SECONDS = 1.15
@@ -192,7 +197,7 @@ export function createBufferWater(
   const group = new THREE.Group()
   group.name = 'buffer.water'
 
-  const surfaceGeometry = new THREE.PlaneGeometry(SPAN, SPAN)
+  const surfaceGeometry = new THREE.PlaneGeometry(SPAN_X, SPAN_Z)
   const surface = new Reflector(surfaceGeometry, {
     clipBias: 0.002,
     textureWidth: 1,
@@ -240,7 +245,7 @@ export function createBufferWater(
 
   // A faint inside face gives the volume a boundary at grazing angles without
   // changing collision or hiding the live-height buffer columns.
-  const volumeGeometry = new THREE.BoxGeometry(SPAN, DEPTH, SPAN)
+  const volumeGeometry = new THREE.BoxGeometry(SPAN_X, DEPTH, SPAN_Z)
   const volumeMaterial = new THREE.MeshBasicMaterial({
     color: 0x356fd0,
     transparent: true,

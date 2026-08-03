@@ -746,18 +746,20 @@ export interface Bus {
  * World modules & the component registry.
  * -------------------------------------------------------------------------*/
 
-/** TV: district vocabulary is replaced wholesale with the Kubetropolis
- * geography at M2 (civic, records, zoning, inspectors, node districts,
- * harbor, ingress). The Postgres ids below keep the TV world compiling. */
+/** The Kubetropolis districts. `world` is the whole-island scope used by
+ * cross-district components (roads, ground, the overview balloon). */
 export type DistrictId =
-  | 'clients'
-  | 'backends'
-  | 'shmem'
-  | 'wal'
-  | 'storage'
-  | 'maintenance'
-  | 'replication'
-  | 'planner'
+  | 'gate'
+  | 'civic'
+  | 'records'
+  | 'zoning'
+  | 'inspectors'
+  | 'node-a'
+  | 'node-b'
+  | 'node-c'
+  | 'reserve'
+  | 'harbor'
+  | 'ingress'
   | 'world'
 
 export type ComponentKind =
@@ -937,6 +939,20 @@ export type ColorKey =
   | 'archive'
   | 'toast'
   | 'index'
+  /* --- Kubetropolis additions (M2). Hues borrowed from the proven palette
+   * language above; the Postgres keys stay until the TV engine files that
+   * read them are retired. --- */
+  | 'civic'
+  | 'etcd'
+  | 'watch'
+  | 'sched'
+  | 'kubelet'
+  | 'harbor'
+  | 'podReady'
+  | 'podPending'
+  | 'podBackoff'
+  | 'podTerminating'
+  | 'crd'
 
 /* ---------------------------------------------------------------------------
  * Camera.

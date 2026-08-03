@@ -78,10 +78,12 @@ describe('Kubetropolis island outline', () => {
 
   it('carves a real harbor bay on the west edge', () => {
     const ring = sampleOutline(48)
-    // Same longitude, two latitudes: land south of the bay, water inside it.
-    expect(contains(ring, -425, 100), 'coast south of the bay is land').toBe(true)
-    expect(contains(ring, -425, -90), 'the bay itself is water').toBe(false)
-    expect(clearance(ring, -425, -90), 'bay water is genuinely offshore').toBeLessThan(-5)
+    // Same longitude, three latitudes: land north of the bay, water inside
+    // it, land again south of it — that concavity IS the harbor.
+    expect(contains(ring, -425, -90), 'coast north of the bay is land').toBe(true)
+    expect(contains(ring, -420, 190), 'coast south of the bay is land').toBe(true)
+    expect(contains(ring, -400, 80), 'the bay itself is water').toBe(false)
+    expect(clearance(ring, -400, 80), 'bay water is genuinely offshore').toBeLessThan(-5)
     // The breakwater spit reaches further west than the bay head.
     const b = outlineBounds(ring)
     expect(b.x0, 'spit tip is the westernmost land').toBeLessThan(-470)

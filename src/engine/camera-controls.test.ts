@@ -182,7 +182,8 @@ describe('map camera mouse controls', () => {
   })
 
   it('keeps a non-empty city frame throughout the full wheel zoom range', () => {
-    const plazaTop = CITY.buf.baseY + CITY.buf.maxRise
+    // Civic plaza furniture ceiling: grade 0 plus the tallest plaza fixture.
+    const plazaTop = 8.4
     for (const deltaY of [10_000, -250, -250, -250, -250, -250, -250, -250, -250, -250, -10_000]) {
       wheel(fixture.dom, deltaY)
       for (let frame = 0; frame < 180; frame++) fixture.rig.update(1 / 60)

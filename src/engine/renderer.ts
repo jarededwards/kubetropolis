@@ -542,11 +542,11 @@ export function createRenderer(container: HTMLElement, bus: Bus): RendererApi {
   // covering a ~250-unit district, and inverse-square would make them invisible
   // at any intensity a human would type.
   const walGlow = new THREE.PointLight(0xffb03a, air.walGlow, 260, 1)
-  walGlow.position.set(ANCHOR.walVault[0], 44, ANCHOR.walVault[2])
+  walGlow.position.set(ANCHOR['records.vault'][0], 44, ANCHOR['records.vault'][2])
   scene.add(walGlow)
 
-  const yardGlow = new THREE.PointLight(0xb57bff, air.yardGlow, 240, 1)
-  yardGlow.position.set((ANCHOR.checkpointer[0] + ANCHOR.autovacLauncher[0]) / 2, 40, 12)
+  const yardGlow = new THREE.PointLight(0x5ad1ff, air.yardGlow, 240, 1)
+  yardGlow.position.set(ANCHOR['harbor.crane'][0], 40, ANCHOR['harbor.crane'][2])
   scene.add(yardGlow)
 
   /* ---- post-processing --------------------------------------------------*/

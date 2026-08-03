@@ -14,7 +14,7 @@ describe('canonical destinations', () => {
     }
   })
 
-  it('uses the project owner’s required plaza name', () => {
-    expect(destinationForDistrict('shmem')?.name).toBe('Buffer pool (shared_buffers)')
+  it('names the vault for what it is', () => {
+    expect(destinationForDistrict('records')?.name).toBe('Hall of Records (etcd)')
   })
 })

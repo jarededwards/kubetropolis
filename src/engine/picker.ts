@@ -191,14 +191,17 @@ export function createPicker(opts: {
 
   /** Fallback accent per district; ComponentDef.color wins. */
   const districtColor: Record<DistrictId, number> = {
-    clients: theme.color.client,
-    backends: theme.color.backend,
-    shmem: theme.color.shmem,
-    wal: theme.color.wal,
-    storage: theme.color.storage,
-    maintenance: theme.color.vacuum,
-    replication: theme.color.replication,
-    planner: theme.color.index,
+    gate: theme.color.client,
+    civic: theme.color.civic,
+    records: theme.color.etcd,
+    zoning: theme.color.sched,
+    inspectors: theme.color.checkpoint,
+    'node-a': theme.color.kubelet,
+    'node-b': theme.color.kubelet,
+    'node-c': theme.color.kubelet,
+    reserve: theme.color.inkDim,
+    harbor: theme.color.harbor,
+    ingress: theme.color.client,
     world: theme.color.ink,
   }
 

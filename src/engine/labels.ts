@@ -165,27 +165,33 @@ const MAX_RECTS = 96
 
 /** Fallback accent per district, overridden by ComponentDef.color. */
 const DISTRICT_COLOR: Record<DistrictId, number> = {
-  clients: COLOR.client,
-  backends: COLOR.backend,
-  shmem: COLOR.shmem,
-  wal: COLOR.wal,
-  storage: COLOR.storage,
-  maintenance: COLOR.vacuum,
-  replication: COLOR.replication,
-  planner: COLOR.index,
+  gate: COLOR.client,
+  civic: COLOR.civic,
+  records: COLOR.etcd,
+  zoning: COLOR.sched,
+  inspectors: COLOR.checkpoint,
+  'node-a': COLOR.kubelet,
+  'node-b': COLOR.kubelet,
+  'node-c': COLOR.kubelet,
+  reserve: COLOR.inkDim,
+  harbor: COLOR.harbor,
+  ingress: COLOR.client,
   world: COLOR.ink,
 }
 
 /** Name on a district chip. Empty = this district never gets one. */
 const DISTRICT_NAME: Record<DistrictId, string> = {
-  clients: destinationForDistrict('clients')?.name ?? '',
-  backends: destinationForDistrict('backends')?.name ?? '',
-  shmem: destinationForDistrict('shmem')?.name ?? '',
-  wal: destinationForDistrict('wal')?.name ?? '',
-  storage: destinationForDistrict('storage')?.name ?? '',
-  maintenance: destinationForDistrict('maintenance')?.name ?? '',
-  replication: destinationForDistrict('replication')?.name ?? '',
-  planner: destinationForDistrict('planner')?.name ?? '',
+  gate: destinationForDistrict('gate')?.name ?? '',
+  civic: destinationForDistrict('civic')?.name ?? '',
+  records: destinationForDistrict('records')?.name ?? '',
+  zoning: destinationForDistrict('zoning')?.name ?? '',
+  inspectors: destinationForDistrict('inspectors')?.name ?? '',
+  'node-a': 'node-a',
+  'node-b': destinationForDistrict('node-b')?.name ?? '',
+  'node-c': 'node-c',
+  reserve: '',
+  harbor: destinationForDistrict('harbor')?.name ?? '',
+  ingress: destinationForDistrict('ingress')?.name ?? '',
   world: '', // the model's own name is a component already, at the city level
 }
 

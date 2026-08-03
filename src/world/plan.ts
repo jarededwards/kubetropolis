@@ -46,15 +46,18 @@ const COAST_POINTS: readonly [number, number][] = [
   [-90, 450],
   [-265, 405],
   [-385, 310],   // SW rise toward the harbor
-  [-445, 170],
-  [-455, 60],    // west coast, south of the bay
-  [-453, 30],    // breakwater root
-  [-488, 12],    // breakwater tip — lighthouse site
-  [-484, -6],    // breakwater inner face
-  [-444, -10],   // bay mouth, southern lip
-  [-402, -60],   // bay head (deepest water; ≥26 m from every anchor)
-  [-398, -120],  // bay head, northern half
-  [-448, -170],  // bay mouth, northern lip
+  [-436, 208],   // approach to the bay's southern mouth
+  [-442, 156],   // bay mouth, southern lip
+  [-348, 126],   // bay south shore, heading inland
+  [-314, 96],    // bay head — the quay faces this water
+  [-318, 52],    // bay head, northern half
+  [-360, 24],    // bay north shore, heading back out
+  [-438, 12],    // bay mouth, northern lip
+  [-452, -2],    // breakwater root
+  [-488, -14],   // breakwater tip — lighthouse site (M7)
+  [-482, -30],   // breakwater outer face
+  [-446, -36],   // rejoin the west coast
+  [-452, -140],  // west coast running north
   [-451, -260],  // NW coast
   [-372, -365],
   [-215, -440],
@@ -274,31 +277,18 @@ export function rectClearance(
 
 /** Eight metres keeps district plinths comfortably inside the 2.2 m kerb. */
 const REQUIRED_CLEARANCE = 8
-const CONTINUITY_ANCHORS = [
-  'archiveGate',
-  'timelineYard',
-  'objectStore',
-  'backupVault',
-  'recoveryGate',
-  'recoveryPad',
-  'restoreWinch',
-  'recoveryClock',
-  'recoveryReplay',
-  'rejoinBay',
-  'endpoint',
-  'consensus',
-  'haPrimarySite',
-  'haStandbyASite',
-  'haStandbyBSite',
-  'patroniNode1',
-  'patroniNode2',
-  'patroniNode3',
-  'leaseNode1',
-  'leaseNode2',
-  'leaseNode3',
-  'standbyB',
-  'standbyBDeck',
-  'standbyBRecv',
+/** Land anchors that sit near the coast and must never end up in the water.
+ * `harbor.ship` (moored in the bay) and `harbor.lighthouse` (on the narrow
+ * breakwater spit, deliberately tighter than 8 m of land) are excluded. */
+const AUDIT_ANCHORS = [
+  'client.terminal',
+  'gate.north',
+  'harbor.docks',
+  'harbor.crane',
+  'harbor.registry',
+  'operator.shack',
+  'ingress.offramp',
+  'quota.kiosk',
 ] as const
 
 export interface IslandContainmentAudit {
@@ -307,7 +297,7 @@ export interface IslandContainmentAudit {
   readonly districtMinimum: number
   readonly districtAtMinimum: string
   readonly anchorMinimum: number
-  readonly anchorAtMinimum: (typeof CONTINUITY_ANCHORS)[number]
+  readonly anchorAtMinimum: (typeof AUDIT_ANCHORS)[number]
 }
 
 /**
@@ -338,8 +328,8 @@ function auditContainment(): IslandContainmentAudit {
   }
 
   let anchorMinimum = Infinity
-  let anchorAtMinimum: (typeof CONTINUITY_ANCHORS)[number] = CONTINUITY_ANCHORS[0]
-  for (const id of CONTINUITY_ANCHORS) {
+  let anchorAtMinimum: (typeof AUDIT_ANCHORS)[number] = AUDIT_ANCHORS[0]
+  for (const id of AUDIT_ANCHORS) {
     const [x, , z] = ANCHOR[id]
     union.x0 = Math.min(union.x0, x)
     union.x1 = Math.max(union.x1, x)
