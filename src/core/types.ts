@@ -1,1187 +1,649 @@
 /* ============================================================================
- * PGSimCity — shared contracts.
+ * Kubetropolis — shared contracts.
+ *
+ * Derived from PGSimCity src/core/types.ts @ 6d2c854 (Apache-2.0, © 2026
+ * Nikolay Samokhvalov). Rewritten at M1: the simulation contract is now the
+ * Kubernetes control plane; the engine/UI surface (bus, registry, world
+ * modules, theme, camera, routes, docs, tours, scenarios) is carried forward
+ * from upstream. A quarantined TV-legacy block at the bottom keeps the
+ * temporarily-verbatim Postgres world files compiling until M2 replaces them.
  *
  * Everything in this file is API surface consumed by more than one module.
- * The simulation (src/sim) never imports three.js; the world (src/world) never
- * mutates simulation state. They meet here.
+ * The simulation (src/sim) never imports three.js; the world (src/world)
+ * never mutates simulation state. They meet here.
  * ==========================================================================*/
 
 import type * as THREE from 'three'
 import { CLAIM_VALUES } from './claims'
 
-/* ---------------------------------------------------------------------------
- * City constants — geometry and simulation must agree on these counts.
- * -------------------------------------------------------------------------*/
-
-/** Shared-buffer visual sample is BUF_GRID x BUF_GRID frame tiles. */
-export const BUF_GRID = CLAIM_VALUES.bufferSample.gridWidth
-export const N_BUFFERS = CLAIM_VALUES.bufferSample.capacityFrames
-export type SampleFrames = number & { readonly __sampleFrames: unique symbol }
-/** PostgreSQL's standard block size. */
-export const PG_PAGE_BYTES = 8 * 1024
-/** Real shared_buffers range exposed by the control rail, in binary MiB. */
-export const SHARED_BUFFERS_MIN_MIB = 128
-export const SHARED_BUFFERS_MAX_MIB = 64 * 1024
-/**
- * The declared demo relations total 8 GiB, so this logical pool activates all
- * N_BUFFERS representative frames. Larger settings stay capped because the
- * sampled working set fits and the miss curve is already flat.
- */
-export const SHARED_BUFFERS_FULL_SAMPLE_MIB = 8 * 1024
-/** How many backend slots exist in the Backend District. */
-export const N_BACKEND_SLOTS = 16
-/** Visible WAL segment slots in the vault (a moving window of pg_wal). */
-export const N_WAL_SEG_SLOTS = 14
-/** Autovacuum worker slots (mirrors autovacuum_max_workers). */
-export const N_VAC_WORKERS = 3
-/** Replica's (smaller) buffer grid. */
-export const REPLICA_BUF_GRID = BUF_GRID
+/* ===========================================================================
+ * THE KUBERNETES CONTRACT (M1)
+ * ==========================================================================*/
 
 /* ---------------------------------------------------------------------------
- * Tables & indexes — the "data" the whole city moves around.
+ * Objects — everything in the cluster is a row in the ledger.
  * -------------------------------------------------------------------------*/
 
-export interface IndexDef {
-  id: string
+export type Uid = string
+
+export type Kind =
+  | 'Pod'
+  | 'Node'
+  | 'Deployment'
+  | 'ReplicaSet'
+  | 'Service'
+  | 'EndpointSlice'
+  | 'Namespace'
+  | 'HorizontalPodAutoscaler'
+  | 'PodDisruptionBudget'
+  | 'Lease'
+  | 'CustomResourceDefinition'
+  | 'Lighthouse'
+  | 'ResourceQuota'
+
+export interface ObjMeta {
+  uid: Uid
+  kind: Kind
   name: string
-  /** btree | gin — purely cosmetic in the model, but shapes the 3D structure. */
-  kind: 'btree' | 'gin'
-  /** Relative visual size. */
-  pages: number
+  namespace: string
+  /** etcd revision of the last committed write to this object */
+  resourceVersion: number
+  /** bumps on spec change only — scaling a Deployment does NOT bump it */
+  generation: number
+  labels: Record<string, string>
+  /** single-owner simplification of ownerReferences */
+  ownerUid?: Uid
+  finalizers: string[]
+  /** model seconds; set ⇒ the object is terminating */
+  deletionTimestamp?: number
 }
 
-export interface TableDef {
-  id: string
-  name: string
-  /** Human blurb shown in the inspector. */
-  blurb: string
-  /** Base heap size in pages (visual + sim scale). */
-  pages: number
-  /** Rough tuples per page. */
-  tuplesPerPage: number
-  /** How hot this table is in the workload (relative weight, sums are normalised). */
-  weight: number
-  /** Fraction of updates that can be HOT (no index churn). */
-  hotFriendly: number
-  /** Accent colour (hex int) used by storage + flows. */
-  color: number
-  indexes: IndexDef[]
-  /** Does it have a TOAST sidecar? */
-  toast?: boolean
+export interface ProbeSpec {
+  periodSeconds: number
+  failureThreshold: number
+  successThreshold: number
+  initialDelaySeconds: number
 }
 
-/* ---------------------------------------------------------------------------
- * Knobs — user-facing GUCs and workload dials.
- * -------------------------------------------------------------------------*/
-
-export type SyncCommit = 'off' | 'local' | 'remote_write' | 'on' | 'remote_apply'
-export type WalLevel = 'minimal' | 'replica' | 'logical'
-export type SynchronousStandbyNames = 'none' | 'standbyA' | 'standbyB'
-export type HaPartition =
-  | 'healthy'
-  | 'isolate_node'
-  | 'isolate_dcs_majority'
-  | 'split_dcs'
-export type RestoreDrillFault = 'none' | 'empty_other_table' | 'corrupt_object'
-export type RecoveryTargetTimeline = 'latest' | 'current'
-
-export interface Knobs {
-  /** Target transactions/sec offered by clients. */
-  tps: number
-  /** 0..1 — share of statements that write. */
-  writeRatio: number
-  /** 0..1 — within writes, share that are UPDATE/DELETE (vs INSERT). */
-  updateRatio: number
-  /** 0..1 — share of reads that are seq scans (vs index scans). */
-  seqScanRatio: number
-  /** Logical shared_buffers pool size in MiB. The plaza is only a sample. */
-  sharedBuffers: number
-  /** MiB per eligible executor node; hash nodes receive the fixed multiplier. */
-  workMem: number
-  /** seconds */
-  checkpointTimeout: number
-  /** 0..1 */
-  checkpointCompletionTarget: number
-  /** MiB — WAL volume that forces a checkpoint. */
-  maxWalSize: number
-  bgwriterEnabled: boolean
-  /** pages per bgwriter round */
-  bgwriterLruMaxpages: number
-  synchronousCommit: SyncCommit
-  /** Which follower synchronous_standby_names selects, or an empty setting. */
-  synchronousStandbyNames: SynchronousStandbyNames
-  walLevel: WalLevel
-  fullPageWrites: boolean
-  autovacuum: boolean
-  /** 0..1 — autovacuum_vacuum_scale_factor */
-  autovacuumScaleFactor: number
-  /** Hold an ancient snapshot open: pins xmin, blocks cleanup. */
-  longRunningXact: boolean
-  /** Take a heavyweight lock that blocks writers on one table. */
-  lockContention: boolean
-  /** Whether standby_a is streaming from the primary. */
-  standbyAEnabled: boolean
-  /** ms of one-way network delay to standby_a. */
-  standbyANetworkLag: number
-  /** standby_a applies WAL slower than it arrives. */
-  standbyASlowApply: boolean
-  /** Whether standby_b is streaming from the primary. */
-  standbyBEnabled: boolean
-  /** ms of one-way network delay to standby_b. */
-  standbyBNetworkLag: number
-  /** standby_b applies WAL slower than it arrives. */
-  standbyBSlowApply: boolean
-  /** A long-running standby_a read reports xmin through hot_standby_feedback. */
-  standbyALongQuery: boolean
-  /** A long-running standby_b read reports xmin through hot_standby_feedback. */
-  standbyBLongQuery: boolean
-  /** WAL-G's object-storage credentials are valid for wal-push. */
-  walGArchiveCredentialsValid: boolean
-  /** Concurrent WAL-G backup-fetch and wal-fetch download workers. */
-  walGDownloadConcurrency: number
-  /** Full backups kept by the modeled `wal-g delete retain FULL n` policy. */
-  backupRetention: number
-  /** Seconds before now selected by the recovery_target_time control. */
-  recoveryTargetAge: number
-  /** Timeline history PostgreSQL may follow while recovering to the target. */
-  recoveryTargetTimeline: RecoveryTargetTimeline
-  /** Explicit evidence fault injected into the next modeled retained backup. */
-  restoreDrillFault: RestoreDrillFault
-  /** Which network topology separates Patroni agents and etcd members. */
-  haPartition: HaPartition
-  /** pg_rewind block-change prerequisite; this model's data checksums are off. */
-  walLogHints: boolean
-  /** Whether the failed primary's data directory still exists and is readable. */
-  oldPrimaryDataIntact: boolean
-  /** Whether WAL back to the divergence point has not been recycled. */
-  rewindWalRetained: boolean
-  /** Simulation speed multiplier. */
-  timeScale: number
-  paused: boolean
+export interface Toleration {
+  key: string
+  seconds?: number
 }
 
-export function poolPages(knobs: Pick<Knobs, 'sharedBuffers'>): number {
-  return knobs.sharedBuffers * 128
-}
+export type PodPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown'
 
-export function poolBytes(knobs: Pick<Knobs, 'sharedBuffers'>): number {
-  return knobs.sharedBuffers * 1024 * 1024
-}
+export type ContainerRunState =
+  | 'waiting'
+  | 'pulling'
+  | 'creating'
+  | 'running'
+  | 'terminating'
+  | 'terminated'
 
-export const DEFAULT_KNOBS: Knobs = {
-  tps: 10,
-  writeRatio: 0.2,
-  updateRatio: 0.6,
-  seqScanRatio: 0.15,
-  sharedBuffers: 2 * 1024,
-  workMem: CLAIM_VALUES.workMem.defaultMiB,
-  checkpointTimeout: CLAIM_VALUES.checkpointPolicy.defaultTimeoutSeconds,
-  checkpointCompletionTarget: 0.9,
-  maxWalSize: CLAIM_VALUES.checkpointPolicy.defaultMaxWalSizeMiB,
-  bgwriterEnabled: true,
-  bgwriterLruMaxpages: 100,
-  synchronousCommit: 'on',
-  synchronousStandbyNames: 'standbyA',
-  walLevel: 'replica',
-  fullPageWrites: true,
-  autovacuum: true,
-  // PostgreSQL's own default is 0.2. This city ships the per-table tuning its
-  // own docs recommend for a busy relation, because at 0.2 the demo tables need
-  // ~5,900 dead rows to cross the threshold — which at this transaction rate is
-  // most of an hour, and the autovacuum yard, its three bays, its landfill and
-  // tour chapter 10 would all sit dead for the whole of a visit.
-  autovacuumScaleFactor: 0.02,
-  longRunningXact: false,
-  lockContention: false,
-  standbyAEnabled: true,
-  standbyANetworkLag: 30,
-  standbyASlowApply: false,
-  standbyBEnabled: true,
-  standbyBNetworkLag: 55,
-  standbyBSlowApply: false,
-  standbyALongQuery: false,
-  standbyBLongQuery: false,
-  walGArchiveCredentialsValid: true,
-  walGDownloadConcurrency: 10,
-  backupRetention: 3,
-  recoveryTargetAge: 20,
-  recoveryTargetTimeline: CLAIM_VALUES.timelineRecovery.defaultTarget,
-  restoreDrillFault: 'none',
-  haPartition: 'healthy',
-  walLogHints: true,
-  oldPrimaryDataIntact: true,
-  rewindWalRetained: true,
-  timeScale: 1,
-  paused: false,
-}
+export type ContainerReason =
+  | 'ContainerCreating'
+  | 'ErrImagePull'
+  | 'ImagePullBackOff'
+  | 'CrashLoopBackOff'
+  | 'OOMKilled'
+  | 'Completed'
+  | 'Error'
 
-/* ---------------------------------------------------------------------------
- * Simulation state.
- * -------------------------------------------------------------------------*/
-
-export type BackendState =
-  | 'free'        // slot unused
-  | 'starting'    // postmaster forked it
-  | 'idle'        // connected, waiting for a query
-  | 'idle_in_xact'
-  | 'parse'
-  | 'plan'
-  | 'exec_cpu'    // running, CPU bound
-  | 'exec_io'     // waiting for a buffer read
-  | 'sort'        // work_mem / temp file
-  | 'wal_insert'
-  | 'eviction_flush' // FlushBuffer waiting for the victim page's WAL
-  | 'commit_wait' // waiting on fsync / sync replication
-  | 'blocked'     // waiting on a heavyweight lock
-  | 'sending'     // streaming rows back
-  | 'ending'
-
-export type QueryKind =
-  | 'select_idx'
-  | 'select_seq'
-  | 'aggregate'
-  | 'insert'
-  | 'update'
-  | 'delete'
-
-export type TraceStop =
-  | 'connect'
-  | 'parse_plan'
-  | 'fetch'
-  | 'work'
-  | 'wal'
-  | 'commit'
-  | 'send'
-  | 'done'
-  | 'blocked'
-
-export interface TraceRecord {
-  /** backend slot carrying the requested statement; -1 while connecting */
-  slot: number
-  query: QueryKind
-  /** index into SimState.tables */
-  table: number
-  sql: string
-  stop: TraceStop
-  /** simulated seconds from the start of this trip to the current stop */
-  stopT: number
-  /** one bit per TraceStop, set by the model when that stop is entered */
-  visited: number
-  /** transactions represented by the completed backend trip */
-  trips: number
-  lastXid: number
-  lastPlanLabel: string
-  lastPlanRows: number
-  lastPlanCost: number
-  rowsSent: number
-  buffersHit: number
-  buffersRead: number
-  walBytes: number
-  walFpiBytes: number
-  deadMade: number
-  lastTripSec: number
-}
-
-export interface TraceRequestOptions {
-  /** Override the model's HOT choice for a teaching example. */
-  hot?: boolean
-  /** Reader-entered SQL retained as the receipt; execution still follows QueryKind. */
-  sql?: string
-}
-
-export type TracePlayback = 'step' | 'slow' | 'live'
-
-export interface PlanNode {
-  id: number
-  label: string
-  detail: string
-  /** rows estimate (cosmetic) */
-  rows: number
-  cost: number
-  actualMs: number
-  children: PlanNode[]
-  /** 0..1 — lit up while this node is "running". */
-  activity: number
-}
-
-export interface BackendSim {
-  slot: number
-  active: boolean
-  state: BackendState
-  /** seconds spent in current state */
-  stateT: number
-  /** expected duration of current state */
-  stateDur: number
-  /** 0..1 */
-  progress: number
-  query: QueryKind
-  /** index into SimState.tables */
-  table: number
-  xid: number
-  /** slot of the backend we're waiting on, or -1 */
-  waitOn: number
-  rowsSent: number
-  buffersTouched: number
-  buffersHit: number
-  buffersRead: number
-  walBytes: number
-  /** full-page-image portion of walBytes */
-  walFpiBytes: number
-  /** dead row versions created by this trip */
-  deadMade: number
-  /** Eligible fixed-template nodes; work_mem is an allowance for each one. */
-  workMemNodes: number
-  workMemSortNodes: number
-  workMemHashNodes: number
-  /** Sum of node allowances, not a claim that every node peaks simultaneously. */
-  workMemAllowanceBytes: number
-  /** Sum of modeled working bytes retained by the eligible nodes. */
-  workMemUsedBytes: number
-  workMemSpillNodes: number
-  /** Per represented statement; cumulative counters account for batched trips. */
-  tempFileBytes: number
-  /** last shared-buffer index this backend touched (for flow targeting) */
-  lastBuffer: number
-  /** total lifetime in seconds (connections are recycled) */
-  age: number
-  plan: PlanNode | null
-  /** cosmetic: label like "SELECT … FROM orders" */
-  sql: string
-}
-
-export interface BufferPool {
-  /** Active frames in the representative sample. Later entries are dark. */
-  sampleFrames: SampleFrames
-  valid: Uint8Array
-  dirty: Uint8Array
-  pinned: Uint8Array
-  /** clock-sweep usage_count 0..5 */
-  usage: Uint8Array
-  /** which table (index into tables) the page belongs to; 255 = none */
-  rel: Uint8Array
-  /** sim time of last touch, for the "heat" shader */
-  lastTouch: Float32Array
-  /** page number inside the relation (cosmetic) */
-  blk: Uint32Array
-  /** Latest WAL position required before each sampled page may be written. */
-  pageLsn: Float64Array
-  clockHand: number
-  /**
-   * hits and misses count the full logical request stream. evictions,
-   * dirtyEvictions, dirtyCount, pinnedCount and usedCount are sample-only.
-   */
-  hits: number
-  misses: number
-  evictions: SampleFrames
-  dirtyEvictions: number
-  /** smoothed 0..1 */
-  hitRatio: number
-  dirtyCount: SampleFrames
-  pinnedCount: SampleFrames
-  usedCount: SampleFrames
-}
-
-export type WalSegState = 'current' | 'full' | 'archiving' | 'archived' | 'recycled' | 'streamed'
-
-export interface WalSegment {
-  id: number
-  /** e.g. 000000010000000000000023 */
-  name: string
-  bytes: number
-  state: WalSegState
-  /** 0..1 fill */
-  fill: number
-}
-
-export interface WalState {
-  /** monotonically increasing byte positions */
-  insertLsn: number
-  writeLsn: number
-  flushLsn: number
-  /** bytes sitting in wal_buffers */
-  bufferBytes: number
-  bufferCapacity: number
-  segmentSize: number
-  segments: WalSegment[]
-  bytesPerSec: number
-  /** 0..1 — elevated right after a checkpoint (full-page images) */
-  fpwBurst: number
-  archiveQueue: number
-  archived: number
-  /** how many segments exist right now (pg_wal size) */
-  segmentCount: number
-}
-
-export type CheckpointPhase = 'idle' | 'start' | 'writing' | 'syncing' | 'finishing'
-
-export interface CheckpointState {
-  phase: CheckpointPhase
-  /** 0..1 through the write phase */
-  progress: number
-  buffersToWrite: number
-  buffersWritten: SampleFrames
-  nextInSec: number
-  elapsed: number
-  lastDuration: number
-  reason: 'time' | 'wal' | 'manual'
-  count: number
-  /** LSN at REDO point of the running/last checkpoint */
-  redoLsn: number
-  /** REDO point recorded by the last completed checkpoint in pg_control. */
-  completedRedoLsn: number
-}
-
-export interface BgwriterState {
-  enabled: boolean
-  /** clock position 0..N_BUFFERS */
-  scanPos: number
-  cleanedTotal: SampleFrames
-  cleanedPerSec: number
-  /** 0..1 how busy it looks */
-  activity: number
-}
-
-export type VacPhase = 'idle' | 'travel' | 'scan_heap' | 'vacuum_index' | 'vacuum_heap' | 'truncate' | 'analyze' | 'return'
-
-export interface VacWorker {
-  slot: number
-  active: boolean
-  table: number
-  phase: VacPhase
-  progress: number
-  /** true only while cost-based throttling is sleeping */
-  vacuumDelay: boolean
-  /** 0..1 along its travel route */
-  travel: number
-  deadCollected: number
-  /** blocked by an old xmin horizon — dead tuples can't be removed */
-  stalledByHorizon: boolean
-}
-
-export interface AutovacState {
-  enabled: boolean
-  nextLaunchSec: number
-  workers: VacWorker[]
-  totalRuns: number
-  /** cosmetic pile of removed tuples at the landfill */
-  landfill: number
-}
-
-export interface MvccSnapshot {
-  /** XIDs below xmin completed before this snapshot. */
-  xmin: number
-  /** XIDs at or above xmax had not started when this snapshot was taken. */
-  xmax: number
-  /** XIDs between xmin and xmax that were still in progress. */
-  inProgress: number[]
-  takenAt: number
-  /** Only the deliberately held older snapshot can pin the global horizon. */
-  active: boolean
-  /** Model-computed revision visible through this snapshot. */
-  visibleRevision: number
-}
-
-export interface MvccTupleVersion {
-  revision: number
-  /** Transaction that inserted this physical row version. */
-  xmin: number
-  /** Transaction that replaced it; zero means this is the current version. */
-  xmax: number
-  createdAt: number
-  /** This version was created by a HOT update. */
-  hot: boolean
-  /** This version was replaced through a same-page HOT link. */
-  nextHot: boolean
-  /** Representative TID, not bytes decoded from a real block. */
-  block: number
-  offset: number
-  /** Heap TID stored by the index entry for this version's HOT chain. */
-  indexBlock: number
-  indexOffset: number
-  /** Model-owned t_ctid target; self for the current version. */
-  ctidBlock: number
-  ctidOffset: number
-  /** Revision at t_ctid, or zero while t_ctid points to self. */
-  nextRevision: number
-  /** Model-computed vacuum eligibility at the current xmin horizon. */
-  collectable: boolean
-}
-
-/**
- * A sampled single-row history. Aggregate tuple counts remain relation-wide;
- * this bounded story exists to expose the MVCC rule those counts result from.
- */
-export interface MvccRowStory {
-  versions: MvccTupleVersion[]
-  earlierSnapshot: MvccSnapshot
-  laterSnapshot: MvccSnapshot
-  nextSampleAt: number
-  collectedVersions: number
-  /** Bounded-history count whose individual headers are no longer retained. */
-  omittedVersions: number
-  /** Greatest xmax among omitted versions; all are removable after this XID. */
-  omittedThroughXmax: number
-}
-
-export interface TableSim {
-  def: TableDef
-  pages: number
-  /** Live total across this table's index relation files, including bloat. */
-  indexPages: number
-  liveTuples: number
-  deadTuples: number
-  /** deadTuples / (live+dead) */
-  bloat: number
-  /** autovacuum_vacuum_threshold + scale_factor * live */
-  vacuumThreshold: number
-  lastVacuum: number
-  seqScans: number
-  idxScans: number
-  inserts: number
-  updates: number
-  hotUpdates: number
-  deletes: number
-  /** 0..1 activity heat, decays */
-  heat: number
-  /** currently being vacuumed */
-  vacuuming: boolean
-  /** Model-owned representative row used by page anatomy. */
-  mvcc: MvccRowStory
-}
-
-export interface ReplicationState {
-  logicalEnabled: boolean
-  logicalSlotLsn: number
-  logicalChangesPerSec: number
-  /** The two independent physical streams fed by separate walsenders. */
-  standbys: [PhysicalStandbyState, PhysicalStandbyState]
-  /** Physical slots survive connection loss and retain primary WAL. */
-  physicalSlots: [PhysicalReplicationSlotState, PhysicalReplicationSlotState]
-}
-
-export type ClusterNodeId = 'primary' | 'standbyA' | 'standbyB'
-
-export interface ClusterNodeWalState {
-  /** Furthest byte accepted by this node. On the primary this is insert_lsn. */
-  receivedLsn: number
-  /** Furthest byte written into this node's pg_wal files. */
-  writtenLsn: number
-  /** Furthest byte made durable in this node's pg_wal files. */
-  flushedLsn: number
-  /** Furthest byte whose records have changed data pages on this node. */
-  appliedLsn: number
-  segmentSize: number
-  segmentCount: number
-  diskBytes: number
-}
-
-export interface ClusterDataDirectoryState {
-  bytes: number
-  /** Primary pages are current; standby pages are current only through this LSN. */
-  appliedLsn: number
-}
-
-export interface ClusterNodeState {
-  id: ClusterNodeId
-  name: 'primary' | 'standby_a' | 'standby_b'
-  /** `diverged` is a former primary that cannot follow the new timeline yet. */
-  role: 'primary' | 'standby' | 'diverged'
-  online: boolean
-  /**
-   * This node's observation, not a cluster-wide truth. Patroni acts through
-   * the linearizable DCS leader key; a stale opinion never authorizes writes.
-   */
-  leaderOpinion: ClusterNodeId | null
-  buffers: BufferPool
-  wal: ClusterNodeWalState
-  dataDirectory: ClusterDataDirectoryState
-}
-
-export interface ClusterState {
-  nodes: [ClusterNodeState, ClusterNodeState, ClusterNodeState]
-}
-
-export type HaTransitionKind = 'none' | 'switchover' | 'failover'
-export type HaTransitionStatus = 'idle' | 'waiting' | 'complete' | 'failed'
-export type PgRewindStatus = 'idle' | 'checking' | 'rewinding' | 'complete' | 'failed'
-
-export type EtcdMemberId = 'etcd1' | 'etcd2' | 'etcd3'
-export type EtcdMemberRole = 'leader' | 'follower' | 'candidate'
-export type PatroniDcsResult =
-  | 'observed'
-  | 'renewed'
-  | 'compare_and_swap_committed'
-  | 'unreachable'
-  | 'no_consensus'
-
-export interface PatroniAgentState {
-  nodeId: ClusterNodeId
-  /** This agent's network paths to etcd-1, etcd-2, and etcd-3. */
-  reachableDcsMembers: [boolean, boolean, boolean]
-  /** A linearizable operation can reach the current Raft commit majority. */
-  canReachConsensus: boolean
-  /** Last linearizable view; stale minority reads never update this field. */
-  observedLeaderKey: ClusterNodeId | null
-  observedTerm: number
-  /** Local safety deadline for the last observed lease. */
-  leaseRemainingSec: number
-  lastDcsResult: PatroniDcsResult
-  demotions: number
-}
-
-export interface EtcdMemberState {
-  id: EtcdMemberId
-  failureDomain: ClusterNodeId
-  role: EtcdMemberRole
-  /** Network paths to etcd-1, etcd-2, and etcd-3, including itself. */
-  reachableMembers: [boolean, boolean, boolean]
-  inCommitMajority: boolean
-  term: number
-  commitIndex: number
-  appliedLeaderKey: ClusterNodeId | null
-  appliedRevision: number
-}
-
-export interface LeaderKeyState {
-  /** Value in the latest committed Raft log entry. */
-  value: ClusterNodeId | null
-  /** False when its attached lease TTL has elapsed. */
-  leaseValid: boolean
-  ttlSec: number
-  leaseRemainingSec: number
-  revision: number
-  compareAndSwapCount: number
-  lastOperation: 'compare-and-swap' | 'renew' | 'lease-expired'
-}
-
-export interface DcsConsensusState {
-  algorithm: 'Raft'
-  members: [EtcdMemberState, EtcdMemberState, EtcdMemberState]
-  majority: 2
-  leaderMember: EtcdMemberId | null
-  term: number
-  commitIndex: number
-  /** Whether a connected component currently has the majority needed to commit. */
-  canCommit: boolean
-  leaderKey: LeaderKeyState
-}
-
-export interface PatroniState {
-  /** One independently observing Patroni process beside each PostgreSQL node. */
-  agents: [PatroniAgentState, PatroniAgentState, PatroniAgentState]
-  /** etcd members committing one linearizable leader key through Raft. */
-  dcs: DcsConsensusState
-  renewEverySec: number
-  demotions: number
-  /**
-   * Always false: a CAS can commit only on the Raft majority side, and an
-   * isolated holder demotes when its last observed lease reaches its TTL.
-   */
-  splitBrain: boolean
-}
-
-export interface TimelineForkState {
-  current: number
-  parent: number
-  forkLsn: number
-  /** Simulated time at which the one modeled promotion created the fork. */
-  forkedAt: number
-  /** Last durable byte on the former primary's now-divergent history. */
-  oldHistoryEndLsn: number
-  /** Last byte generated on the promoted node's history. */
-  newHistoryEndLsn: number
-}
-
-export interface HaTransitionState {
-  kind: HaTransitionKind
-  status: HaTransitionStatus
-  source: ClusterNodeId | null
-  target: ClusterNodeId | null
-  startedAt: number
-  waitSec: number
-  lossBytes: number
-  /** Committed write transactions whose commit records did not reach target. */
-  lossTransactions: number
-  failureReason: string
-}
-
-export interface PgRewindState {
-  required: boolean
-  node: ClusterNodeId | null
-  /** A follower ahead of the fork cannot enter the new timeline directly. */
-  reinitializeRequired: boolean
-  reinitializeNode: ClusterNodeId | null
-  reinitializeBytes: number
-  reinitializeCopiedBytes: number
-  /** Captured at divergence; enabling wal_log_hints afterwards is too late. */
-  blockChangeTrackingAvailable: boolean
-  status: PgRewindStatus
-  progress: number
-  startedAt: number
-  elapsedSec: number
-  estimatedDurationSec: number
-  bytesRewound: number
-  bytesCopied: number
-  failureReason: string
-}
-
-export interface HighAvailabilityState {
-  currentLeader: ClusterNodeId | null
-  acceptingWrites: boolean
-  patroni: PatroniState
-  timeline: TimelineForkState
-  transition: HaTransitionState
-  rejoin: PgRewindState
-}
-
-export type ReplicationProcessState = 'stopped' | 'catchup' | 'streaming'
-
-export interface PhysicalStandbyState {
-  nodeId: 'standbyA' | 'standbyB'
-  applicationName: 'standby_a' | 'standby_b'
-  enabled: boolean
-  connected: boolean
-  mode: 'async' | 'sync'
-  /** Primary-side walsender progress. */
-  sentLsn: number
-  /** Bytes delivered to walreceiver, before its local write catches up. */
-  receivedLsn: number
-  /** Bytes written to the standby's own pg_wal. */
-  writtenLsn: number
-  /** Bytes fsynced in the standby's own pg_wal. */
-  flushedLsn: number
-  /** Bytes replayed by the standby startup process. */
-  appliedLsn: number
-  lagBytes: number
-  lagSec: number
-  networkLagMs: number
-  applyActivity: number
-  inFlight: number
-  walSender: ReplicationProcessState
-  walReceiver: ReplicationProcessState
-  startupProcess: ReplicationProcessState
-  /** Primary has received this standby's write/durable/apply acknowledgements. */
-  acknowledgedWriteLsn: number
-  acknowledgedFlushLsn: number
-  acknowledgedApplyLsn: number
-}
-
-export interface PhysicalReplicationSlotState {
-  name: 'standby_a_slot' | 'standby_b_slot'
-  standbyId: 'standbyA' | 'standbyB'
-  /** False after DROP_REPLICATION_SLOT; the standby then needs a new base backup. */
-  exists: boolean
-  active: boolean
-  restartLsn: number
-  retainedBytes: number
-}
-
-export type BaseBackupStatus = 'idle' | 'copying' | 'waiting_wal' | 'failed'
-
-export interface BaseBackupWalRange {
-  /** Timeline from the backup manifest's WAL-Ranges entry. */
-  timeline: number
-  /** First LSN that must be readable on this timeline. */
-  startLsn: number
-  /** Earliest LSN where replay may stop on this timeline. */
-  endLsn: number
-}
-
-export interface BaseBackup {
-  id: number
-  /** WAL-G base-backup name derived from the backup start WAL segment. */
-  label: string
-  startedAt: number
-  completedAt: number
-  /** Timeline current at backup start; walRanges owns the full requirement. */
-  startTimeline: number
-  startLsn: number
-  stopLsn: number
-  /** Chronological WAL requirements from the modeled backup manifest. */
-  walRanges: BaseBackupWalRange[]
-  /** Logical bytes read from the data directory. */
-  dataBytes: number
-  /** Scaled compressed bytes stored in object storage. */
-  objectStoreBytes: number
-  durationSec: number
-  source: 'standby_a'
-  trigger: 'manual' | 'schedule'
-  tool: 'WAL-G'
-  /** Deterministic model digest for the backup manifest captured at backup time. */
-  manifestDigest: number
-  /** Digest of the retained object contents; verification compares this to the manifest. */
-  objectDigest: number
-  /** One bit per declared relation that contained a row witness in this backup. */
-  smokeTableMask: number
-}
-
-export interface BaseBackupOperation {
-  status: BaseBackupStatus
-  trigger: 'manual' | 'schedule'
-  progress: number
-  startedAt: number
-  startTimeline: number
-  stopTimeline: number
-  startLsn: number
-  stopLsn: number
-  dataBytes: number
-  objectStoreBytes: number
-  copiedBytes: number
-  estimatedDurationSec: number
-  failureReason: string
-}
-
-export interface BaseBackupSchedule {
-  /** One real day represented on the continuity quarter's teaching clock. */
-  intervalSec: number
-  /** Absolute simulated time of the next automatic backup-push attempt. */
-  nextStartAt: number
-}
-
-export type PointInTimeRestoreStatus =
-  | 'idle'
-  | 'fetching'
-  | 'replaying'
-  | 'complete'
-  | 'failed'
-
-export interface PointInTimeRestore {
-  status: PointInTimeRestoreStatus
-  progress: number
-  targetTime: number
-  /** Transaction-end record proving that recovery can cross targetTime; zero if absent. */
-  targetRecordLsn: number
-  targetLsn: number
-  recoveryTargetTimeline: RecoveryTargetTimeline
-  /** Timeline current at backup start, used by recovery_target_timeline=current. */
-  backupTimeline: number
-  targetTimeline: number
-  crossesTimelineFork: boolean
-  historyFileName: string
-  followedHistoryFile: boolean
-  /** Parent replay end; latest caps at the fork, while current may use its archived tail. */
-  parentReplayEndLsn: number
-  backupId: number
-  backupAgeSec: number
-  backupBytesRequired: number
-  backupBytesFetched: number
-  walBytesRequired: number
-  /** WAL bytes currently available on the contiguous selected archive history. */
-  walBytesAvailable: number
-  walBytesReplayed: number
-  /** Latest transaction-end timestamp reached in the available selected history. */
-  lastReachedTime: number
-  /** Timeline of the transaction-end record that supplied lastReachedTime. */
-  lastReachedTimeline: number
-  estimatedDurationSec: number
-  elapsedSec: number
-  failureReason: string
-  /** Exact successful outcome retained after a PITR or drill finishes. */
-  resultMessage: string
-  /** Missing-WAL result from the latest archive evaluation. */
-  pendingWalFailureReason: string
-  /** Backup/control-file incompatibility discovered when recovery starts. */
-  pendingStartupFailureReason: string
-  /** This PITR operation stops at the target; promotion is a separate HA action. */
-  promoted: false
-}
-
-export type RestoreDrillLevel = 'table' | 'cluster' | 'verified'
-
-export type RestoreDrillStatus =
-  | 'idle'
-  | 'restoring'
-  | 'verifying'
-  | 'querying'
-  | 'passed'
-  | 'failed'
-
-export interface RestoreDrill {
-  level: RestoreDrillLevel
-  status: RestoreDrillStatus
-  evidenceRank: number
-  progress: number
-  startedAt: number
-  completedAt: number
-  targetTime: number
-  backupId: number
-  /** Age of the selected backup at recovery_target_time. */
-  backupAgeSec: number
-  /** Compressed backup objects read from storage, before local extraction. */
-  backupObjectBytesRequired: number
-  walBytesRequired: number
-  estimatedRestoreToTargetSec: number
-  measuredRestoreToTargetSec: number
-  estimatedDurationSec: number
-  elapsedSec: number
-  objectStoreBytesRead: number
-  checksumBytesRequired: number
-  checksumBytesRead: number
-  smokeBytesRequired: number
-  smokeBytesRead: number
-  validationBytesRequired: number
-  validationBytesRead: number
-  manifestDigest: number
-  restoredDigest: number
-  smokeTableMask: number
-  failureReason: string
-}
-
-export interface ArchiveRecoveryState {
-  /** Timeline whose live frontier the unqualified fields below describe. */
-  timeline: number
-  /** The one modeled parent timeline, or zero before promotion. */
-  parentTimeline: number
-  /** Retained parent WAL may extend beyond the fork for current-timeline recovery. */
-  parentArchivedThroughLsn: number
-  parentArchivedThroughTime: number
-  historyFileName: string
-  historyFileArchived: boolean
-  queueSegments: number
-  archivedThroughLsn: number
-  archivedThroughTime: number
-  failedAttempts: number
-  pgWalBytes: number
-  pgWalCapacityBytes: number
-  /**
-   * Teaching-scale guard. Real PostgreSQL PANICs when the filesystem fills;
-   * the city keeps reads and the archiver alive so the incident can be watched.
-   */
-  writesBlocked: boolean
-  rejectedWrites: number
-}
-
-export interface DisasterRecoveryState {
-  /** The concrete behavior used where WAL-G and pgBackRest differ. */
-  tool: 'WAL-G'
-  dataDirectoryBytes: number
-  archive: ArchiveRecoveryState
-  backups: BaseBackup[]
-  expiredBackups: number
-  oldestRecoverableTime: number
-  backupSchedule: BaseBackupSchedule
-  backup: BaseBackupOperation
-  restore: PointInTimeRestore
-  drill: RestoreDrill
-}
-
-export interface LockEdge {
-  holder: number
-  waiter: number
-  table: number
-  mode: string
-  ageSec: number
-}
-
-/** Additive anatomy of one completed model-latency observation. */
-export interface LatencyWaits {
-  bufferReadMs: number
-  dirtyWriteMs: number
-  tempFileMs: number
-  commitMs: number
-  lockMs: number
-  runningMs: number
-}
-
-export interface WorkMemState {
-  activeNodes: number
-  activeSortNodes: number
-  activeHashNodes: number
-  activeAllowanceBytes: number
-  activeUsedBytes: number
-  spillingNodes: number
-  /** Current representative bytes visible under active backend slots. */
-  liveTempBytes: number
-  /** Cumulative pg_stat_database-shaped counters since model reset. */
-  tempFiles: number
-  tempBytes: number
-}
-
-export interface LatencyQuantile {
-  /** Deliberately stretched backend lifecycle time, never production time. */
-  totalMs: number
-  /** Independent weighted quantile for each component distribution. */
-  waits: LatencyWaits
-}
-
-export interface LatencyStats {
-  /** Completed backend trips currently retained in the fixed rolling window. */
-  observations: number
-  /** Transactions represented by those trips; quantiles are weighted by this. */
-  transactions: number
-  /** Weighted mean; unlike component quantiles, its anatomy is additive. */
-  mean: LatencyQuantile
-  p50: LatencyQuantile
-  p99: LatencyQuantile
-}
-
-export interface SimStats {
-  tps: number
-  commits: number
-  rollbacks: number
-  blksHit: number
-  blksRead: number
-  tupReturned: number
-  tupInserted: number
-  tupUpdated: number
-  tupDeleted: number
-  walBytesPerSec: number
-  /** Full logical page stream; unlike ioWritePerSec, this is not sampled. */
-  ioReadPerSec: number
-  /** Representative-sample write rate; do not present it as full-pool I/O. */
-  ioWritePerSec: SampleFrames
-  /** Normalized representative-sample write pressure for presentation. */
-  ioWriteLoad: number
-  cacheHitPct: number
-  /** Occupied connection slots, including idle sessions. */
-  activeBackends: number
-  /** Backends whose pg_stat_activity state is active. */
-  runningBackends: number
-  /** Rolling weighted transaction quantiles in deliberately stretched model ms. */
-  latency: LatencyStats
-  /** rolling window for sparklines: newest last */
-  history: {
-    tps: number[]
-    hit: number[]
-    latencyP50: number[]
-    latencyP99: number[]
-    wal: number[]
-    dirty: number[]
-    lag: number[]
+export interface PodObj extends ObjMeta {
+  kind: 'Pod'
+  spec: {
+    nodeName?: string
+    image: string
+    initImage?: string
+    imagePullPolicy?: 'Always' | 'IfNotPresent'
+    requests: { cpuM: number; memMi: number }
+    limitMemMi: number
+    /** terminationGracePeriodSeconds (default stamped by admission) */
+    tgps: number
+    tolerations: Toleration[]
+    probes: { readiness: ProbeSpec; liveness: ProbeSpec }
+    /** THE delete-race teaching knob */
+    preStopSleepSec: number
+  }
+  status: {
+    phase: PodPhase
+    ready: boolean
+    scheduledAt?: number
+    startedAt?: number
+    container: {
+      state: ContainerRunState
+      reason?: ContainerReason
+      restartCount: number
+      /** current backoff rung in model seconds (10 → 20 → … → 300) */
+      backoffSec: number
+      backoffUntil?: number
+      exitCode?: number
+      /** current working-set estimate, model MiB */
+      memMi: number
+    }
   }
 }
 
-export type ScenarioDecisionPhase =
-  | 'staging'
-  | 'ready'
-  | 'outcome'
-  | 'recovering'
-  | 'recovered'
-
-export type ScenarioChoiceId =
-  | 'add-wal-capacity'
-  | 'drop-replication-slot'
-  | 'terminate-transaction'
-  | 'wait-for-transaction'
-  | 'promote-standby-a'
-  | 'promote-standby-b'
-
-interface ScenarioDecisionBase {
-  phase: ScenarioDecisionPhase
-  choice: ScenarioChoiceId | null
-  /** Testable judgement for this staged situation; never rendered as a score. */
-  correct: boolean | null
+export interface ReplicaSetObj extends ObjMeta {
+  kind: 'ReplicaSet'
+  spec: {
+    replicas: number
+    /** identifies the template generation; keeps sibling RSes disjoint */
+    podTemplateHash: string
+    template: { image: string; requests: { cpuM: number; memMi: number }; limitMemMi: number }
+  }
+  status: { observed: number; ready: number }
 }
 
-export interface SlotPressureDecisionState extends ScenarioDecisionBase {
-  kind: 'slot-pressure'
-  slotRetainedAtDecision: number
-  capacityAtDecision: number
-  addedCapacityBytes: number
-  rebuildRequired: boolean
-  rebuildBytes: number
-  rebuildCopiedBytes: number
-  rejectedWritesAtDecision: number
-  rejectedWrites: number
+export interface DeploymentObj extends ObjMeta {
+  kind: 'Deployment'
+  spec: {
+    replicas: number
+    template: { image: string; requests: { cpuM: number; memMi: number }; limitMemMi: number }
+    maxSurgePct: number
+    maxUnavailablePct: number
+  }
+  status: { observed: number; ready: number; updated: number }
 }
 
-export interface VacuumBlockadeDecisionState extends ScenarioDecisionBase {
-  kind: 'vacuum-blockade'
-  deadTuplesAtDecision: number
-  pagesAtDecision: number
-  vacuumRunsAtDecision: number
-  landfillAtDecision: number
-  deadTuplesAdded: number
-  pagesAdded: number
-  blockedVacuumWorkers: number
-  deadTuplesReclaimed: number
-  transactionTerminated: boolean
+export interface NodeCondition {
+  type: 'Ready'
+  status: boolean
+  /** model seconds of the last transition */
+  since: number
 }
 
-export interface FailoverCandidateDecisionState extends ScenarioDecisionBase {
-  kind: 'failover-candidate'
-  standbyALagBytes: number
-  standbyBLagBytes: number
-  lossBytes: number
-  lossTransactions: number
-  rejoinBytes: number
+export interface NodeObj extends ObjMeta {
+  kind: 'Node'
+  spec: { unschedulable?: boolean; taints: { key: string }[] }
+  status: {
+    conditions: NodeCondition[]
+    allocatable: { cpuM: number; memMi: number }
+  }
 }
 
-export type ScenarioDecisionState =
-  | SlotPressureDecisionState
-  | VacuumBlockadeDecisionState
-  | FailoverCandidateDecisionState
+export interface LeaseObj extends ObjMeta {
+  kind: 'Lease'
+  spec: { holder: string; durationSeconds: number; renewedAt: number }
+}
+
+/** The kinds the M1 model actually stores. Later milestones extend this. */
+export type K8sObject = PodObj | ReplicaSetObj | DeploymentObj | NodeObj | LeaseObj
+
+/* ---------------------------------------------------------------------------
+ * Watch machinery — state moves ONLY as watch events.
+ * -------------------------------------------------------------------------*/
+
+export type WatchEventType = 'ADDED' | 'MODIFIED' | 'DELETED'
+
+export interface WatchEvent {
+  type: WatchEventType
+  object: K8sObject
+}
+
+export interface ChangeRecord {
+  rev: number
+  op: 'put' | 'delete'
+  uid: Uid
+  kind: Kind
+  /** watch-event classification computed at commit time */
+  event: WatchEventType
+}
+
+/* ---------------------------------------------------------------------------
+ * etcd — the vault. Quorum, fsync, revisions, compaction. Honestly simplified.
+ * -------------------------------------------------------------------------*/
+
+export interface PendingWrite {
+  req: ApiRequest
+  acks: number
+  /** model time at which quorum+fsync completes and the write commits */
+  readyAt: number
+}
+
+export interface EtcdState {
+  revision: number
+  compactedRevision: number
+  /** committed change log; trimmed by compaction */
+  log: ChangeRecord[]
+  /** materialized current state — THE cluster */
+  objects: Map<Uid, K8sObject>
+  members: { id: 0 | 1 | 2; healthy: boolean }[]
+  leader: 0 | 1 | 2
+  /** effective fsync latency, model ms (base + chaos) */
+  fsyncMs: number
+  proposals: PendingWrite[]
+  nextCompactionAt: number
+}
+
+/* ---------------------------------------------------------------------------
+ * API server — the only doorway. Admission advances one stage per tick.
+ * -------------------------------------------------------------------------*/
+
+export type ApiVerb = 'create' | 'update' | 'delete' | 'remove'
+
+export type AdmissionStage = 'authn' | 'mutating' | 'validating' | 'toEtcd'
+
+export type ComponentId = string
+
+export interface ApiRequest {
+  verb: ApiVerb
+  obj: K8sObject
+  source: ComponentId
+  stage: AdmissionStage
+  /** defaults stamped in by the mutating stage — read by trace copy */
+  mutations: string[]
+}
+
+export interface WatchReg {
+  subscriber: ComponentId
+  kinds: Kind[]
+  /** last revision delivered to this subscriber; lag vs etcd.revision is rendered */
+  sentRev: number
+  /** committed records waiting out watchLatency before delivery */
+  backlog: { rec: ChangeRecord; visibleAt: number }[]
+  /** set when compaction outran this watcher; it must relist */
+  needsRelist: boolean
+}
+
+export interface ApiServerState {
+  inflight: ApiRequest[]
+  rejected: number
+  watchers: WatchReg[]
+}
+
+/* ---------------------------------------------------------------------------
+ * Scheduler — filter, score, bind. Bind is a write, not a construction order.
+ * -------------------------------------------------------------------------*/
+
+export interface FilterVerdict {
+  node: string
+  ok: boolean
+  failed?: 'Unschedulable' | 'ResourcesFit' | 'TaintToleration'
+}
+
+export interface ScoreEntry {
+  node: string
+  leastAllocated: number
+  imageLocality: number
+  spread: number
+  total: number
+}
+
+export interface SchedCycle {
+  podUid: Uid
+  filter: FilterVerdict[]
+  score: ScoreEntry[]
+  chosen?: string
+}
+
+export interface SchedulerState {
+  /** uids of pending, unassigned pods in arrival order */
+  queue: Uid[]
+  backoff: { uid: Uid; until: number }[]
+  /** last completed cycle, for the overlay and the M3 trace */
+  cycle?: SchedCycle
+  scheduled: number
+}
+
+/* ---------------------------------------------------------------------------
+ * Controllers — identical desks: a workqueue and a compare loop.
+ * -------------------------------------------------------------------------*/
+
+export type ControllerId =
+  | 'deployment'
+  | 'replicaset'
+  | 'endpointslice'
+  | 'nodelifecycle'
+  | 'hpa'
+  | 'gc'
+  | 'lighthouse'
+
+export interface ControllerState {
+  id: ControllerId
+  workqueue: Uid[]
+  sentRev: number
+  reconciles: number
+  current?: Uid
+  nextResyncAt: number
+  /** periodic controllers (nodelifecycle, hpa) also wake on a timer */
+  nextPeriodicAt?: number
+  /**
+   * In-flight expectations per reconciled parent — the standard controller
+   * trick that stops a desk from re-filing the same create/delete while its
+   * previous write is still in the pipeline. Decremented on watch delivery.
+   */
+  expect: Map<Uid, { creates: number; deletes: number }>
+}
+
+/* ---------------------------------------------------------------------------
+ * Nodes & kubelets — districts and their foremen.
+ * -------------------------------------------------------------------------*/
+
+export interface ImagePull {
+  image: string
+  podUid: Uid
+  totalMB: number
+  doneMB: number
+}
+
+/**
+ * The kubelet's LOCAL view of one pod — probe timers, backoff, termination
+ * progress. Distinct from the published status in etcd, which is honest to
+ * real kubelet architecture: the foreman knows things City Hall has not been
+ * told yet.
+ */
+export interface LocalPodRuntime {
+  podUid: Uid
+  nextProbeAt: number
+  readinessSuccesses: number
+  readinessFails: number
+  livenessFails: number
+  /** model time the container last started, for the clean-run backoff reset */
+  runningSince?: number
+  /** container-create completes at this time */
+  creatingUntil?: number
+  /** chaosCrashLoop: the app will exit at this time */
+  crashAt?: number
+  /** termination: preStop sleep ends */
+  preStopUntil?: number
+  /** termination: SIGTERM delivered at */
+  sigtermAt?: number
+  /** termination: SIGKILL fires at (sigterm + grace) */
+  killAt?: number
+}
+
+export interface NodeSim {
+  id: string
+  objUid: Uid
+  powered: boolean
+  allocatable: { cpuM: number; memMi: number }
+  /** sum of requests of pods bound here (derived each tick) */
+  allocated: { cpuM: number; memMi: number }
+  leaseRenewAt: number
+  imageCache: Set<string>
+  /** serialized: index 0 is the active pull */
+  pulls: ImagePull[]
+  kubelet: {
+    sentRev: number
+    syncQueue: Uid[]
+    nextSweepAt: number
+    runtime: Map<Uid, LocalPodRuntime>
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Harbor, traffic, events, vitals.
+ * -------------------------------------------------------------------------*/
+
+export interface RegistryState {
+  /** M1 stub: the harbor exists as a data point; M2 builds the waterfront */
+  reachable: boolean
+  mbps: number
+}
+
+export interface TrafficState {
+  /** M1 stub: request traffic arrives at M6 */
+  reqPerSec: number
+}
+
+export interface ClusterEvent {
+  at: number
+  kind: 'Normal' | 'Warning'
+  reason: string
+  obj: string
+  message: string
+}
+
+export interface Vitals {
+  podsTotal: number
+  podsRunning: number
+  podsReady: number
+  podsPending: number
+  nodesReady: number
+  etcdRevision: number
+  /** worst subscriber lag in revisions */
+  watchMaxLagRev: number
+  imagePullsActive: number
+  restartsTotal: number
+}
+
+/* ---------------------------------------------------------------------------
+ * Trace — fleshed out at M3; the shape exists so state can carry one.
+ * -------------------------------------------------------------------------*/
+
+export type TraceStop =
+  | 'client'
+  | 'admission'
+  | 'etcd_commit'
+  | 'watch_fanout'
+  | 'sched_queue'
+  | 'filter_score'
+  | 'bind'
+  | 'kubelet_sees'
+  | 'image_pull'
+  | 'start_probes'
+  | 'endpoints'
+  | 'done'
+
+export type TracePlayback = 'step' | 'slow' | 'live'
+
+export interface TraceRecord {
+  action: ActionKind
+  stop: TraceStop
+  /** bitmask of visited stops (core/model-helpers.traceStopBit) */
+  visited: number
+  startedAt: number
+  /** API round trips so far — the counter that IS the lesson */
+  trips: number
+  /** etcd revision at the most recent traced commit */
+  rev: number
+  playback: TracePlayback
+}
+
+/* ---------------------------------------------------------------------------
+ * Commands — the ONLY way anything mutates the cluster. kubectl is a client.
+ * -------------------------------------------------------------------------*/
+
+export type ActionKind =
+  | 'apply-pod'
+  | 'apply-deployment'
+  | 'scale-6'
+  | 'set-image-v2'
+  | 'delete-pod'
+  | 'apply-service'
+  | 'apply-crd'
+  | 'apply-lighthouse'
+  | 'drain-node'
+  | 'kill-node'
+
+export interface ApplyPodCommand {
+  kind: 'ApplyPod'
+  name: string
+  image: string
+  requests?: { cpuM: number; memMi: number }
+  limitMemMi?: number
+}
+
+export interface ApplyDeploymentCommand {
+  kind: 'ApplyDeployment'
+  name: string
+  image: string
+  replicas: number
+  requests?: { cpuM: number; memMi: number }
+  limitMemMi?: number
+}
+
+export interface ScaleCommand {
+  kind: 'Scale'
+  deployment: string
+  replicas: number
+}
+
+export interface DeletePodCommand {
+  kind: 'DeletePod'
+  /** pod name; the newest match wins if a prefix is given */
+  name: string
+}
+
+export type Command =
+  | ApplyPodCommand
+  | ApplyDeploymentCommand
+  | ScaleCommand
+  | DeletePodCommand
+
+/* ---------------------------------------------------------------------------
+ * Knobs — every one has a visible city effect (KNOB-AUDIT discipline).
+ * -------------------------------------------------------------------------*/
+
+export type ChaosNodeTarget = 'none' | 'node-a' | 'node-b' | 'node-c'
+
+export interface Knobs {
+  /* time */
+  timeScale: number
+  paused: boolean
+  /* traffic (wired M6) */
+  reqPerSec: number
+  reqCpuCostM: number
+  /* rollout (wired M4) */
+  maxSurgePct: number
+  maxUnavailablePct: number
+  /* probes */
+  readinessPeriodSec: number
+  livenessPeriodSec: number
+  failureThreshold: number
+  initialDelaySec: number
+  /* lifecycle */
+  tgpsSec: number
+  preStopSleepSec: number
+  /* hpa (wired M8) */
+  hpaEnabled: boolean
+  hpaTargetCpuPct: number
+  hpaMin: number
+  hpaMax: number
+  /* capacity */
+  nodeCount: number
+  podCpuRequestM: number
+  podMemRequestMi: number
+  podMemLimitMi: number
+  /* images */
+  imageSizeMB: number
+  registryMBps: number
+  /* cluster */
+  unreachableTolerationSec: number
+  nodeGraceSec: number
+  etcdFsyncMs: number
+  watchLatencyMs: number
+  /* pdb (wired M8) */
+  pdbEnabled: boolean
+  pdbMinAvailable: number
+  /* chaos (mechanisms land with their milestones) */
+  chaosCrashLoop: boolean
+  chaosOomLeak: boolean
+  chaosReadinessFlake: boolean
+  chaosNodeFail: ChaosNodeTarget
+  chaosRegistryOutage: boolean
+  chaosEtcdSlow: boolean
+  chaosLeaderFlap: boolean
+  chaosQuotaLow: boolean
+}
+
+export const DEFAULT_KNOBS: Knobs = {
+  timeScale: 1,
+  paused: false,
+  reqPerSec: 40,
+  reqCpuCostM: 15,
+  maxSurgePct: 25,
+  maxUnavailablePct: 25,
+  readinessPeriodSec: CLAIM_VALUES.probes.periodSeconds,
+  livenessPeriodSec: CLAIM_VALUES.probes.periodSeconds,
+  failureThreshold: CLAIM_VALUES.probes.failureThreshold,
+  initialDelaySec: CLAIM_VALUES.probes.initialDelaySeconds,
+  tgpsSec: CLAIM_VALUES.termination.defaultGraceSeconds,
+  preStopSleepSec: 0,
+  hpaEnabled: false,
+  hpaTargetCpuPct: 50,
+  hpaMin: 1,
+  hpaMax: 10,
+  nodeCount: 3,
+  podCpuRequestM: 250,
+  podMemRequestMi: 256,
+  podMemLimitMi: 512,
+  imageSizeMB: 180,
+  registryMBps: 60,
+  unreachableTolerationSec: CLAIM_VALUES.tolerations.defaultSeconds,
+  nodeGraceSec: CLAIM_VALUES.nodeMonitor.graceSeconds,
+  etcdFsyncMs: CLAIM_VALUES.modelEtcd.fsyncMs,
+  watchLatencyMs: CLAIM_VALUES.modelWatch.latencyMs,
+  pdbEnabled: false,
+  pdbMinAvailable: 2,
+  chaosCrashLoop: false,
+  chaosOomLeak: false,
+  chaosReadinessFlake: false,
+  chaosNodeFail: 'none',
+  chaosRegistryOutage: false,
+  chaosEtcdSlow: false,
+  chaosLeaderFlap: false,
+  chaosQuotaLow: false,
+}
+
+/* ---------------------------------------------------------------------------
+ * SimState — one mutable object, owned by src/sim, read-only to all else.
+ * -------------------------------------------------------------------------*/
 
 export interface SimState {
-  /** simulated seconds since boot */
-  t: number
-  /** wall seconds since boot */
+  /** completed fixed steps */
+  tick: number
+  /** model seconds (tick × step) */
+  now: number
+  /** wall seconds since boot (presentation only; never drives the model) */
   realT: number
+  /** xorshift32 state — ALL sim randomness flows through this */
+  rngState: number
+  /** monotonically increasing uid source */
+  uidSeq: number
   knobs: Knobs
-  xid: number
-  /** Global visibility cutoff; a replacing xmax must precede it to be removable. */
-  xminHorizon: number
-  oldestSnapshotAge: number
-  maxConnections: number
-  backends: BackendSim[]
-  buffers: BufferPool
-  wal: WalState
-  checkpoint: CheckpointState
-  bgwriter: BgwriterState
-  autovac: AutovacState
-  tables: TableSim[]
-  replication: ReplicationState
-  cluster: ClusterState
-  highAvailability: HighAvailabilityState
-  disasterRecovery: DisasterRecoveryState
-  locks: LockEdge[]
-  workMem: WorkMemState
-  stats: SimStats
-  /** id of the running scenario, if any */
   scenario: string | null
-  scenarioT: number
-  /** Model-owned state for one of the three operator judgement scenarios. */
-  scenarioDecision: ScenarioDecisionState | null
-  /** postmaster fork animation pulses */
-  forkPulse: number
-  /** model-owned record of the requested statement trip */
-  trace: TraceRecord
+  etcd: EtcdState
+  api: ApiServerState
+  sched: SchedulerState
+  controllers: Record<ControllerId, ControllerState>
+  nodes: NodeSim[]
+  harbor: RegistryState
+  traffic: TrafficState
+  operatorRunning: boolean
+  /**
+   * Write-time pod→owner index so a DELETED watch record (which carries no
+   * object) can still be routed to the owning desk. Sim-internal bookkeeping.
+   */
+  podOwners: Map<Uid, Uid>
+  /** ring buffer, cap 500 — the newspaper */
+  events: ClusterEvent[]
+  trace: TraceRecord | null
+  vitals: Vitals
 }
 
 export interface SimApi {
   state: SimState
-  /** advance by dt simulated seconds (already scaled by timeScale) */
+  /** advance by dt model seconds (already scaled); called by the timebase */
   update(dt: number): void
+  /** the single command surface — kubectl is just another client */
+  apply(command: Command): void
   setKnob<K extends keyof Knobs>(key: K, value: Knobs[K], source?: 'user'): void
-  runScenario(id: string | null): void
-  /** Apply one of the visible operator choices in an interactive scenario. */
-  chooseScenario(choice: ScenarioChoiceId): boolean
-  /** Repair the survivable consequence of the selected choice. */
-  recoverScenario(): boolean
-  request(kind: QueryKind, table: number, opts?: TraceRequestOptions): void
-  setTraceMode(mode: TracePlayback): void
-  endTrace(): void
-  /** Start a WAL-G full backup-push from standby_a to object storage. */
-  startBaseBackup(): boolean
-  /** Restore to `targetAgeSec` before now, or the recoveryTargetAge control. */
-  startPointInTimeRestore(targetAgeSec?: number): boolean
-  /** Exercise the retained backup and archive, then run the selected proof level. */
-  startRestoreDrill(level: RestoreDrillLevel, targetAgeSec?: number): boolean
-  /** Record one node's observation; the DCS leader key remains authoritative. */
-  setLeaderOpinion(node: ClusterNodeId, leader: ClusterNodeId | null): void
-  /** Stop writes, wait for the selected standby, then hand over with no loss. */
-  startSwitchover(target?: 'standbyA' | 'standbyB'): boolean
-  /** Model loss of the current primary and promote a selected durable position. */
-  startFailover(target?: 'standbyA' | 'standbyB'): boolean
-  /** Rewind the former primary to the recorded divergence point. */
-  startPgRewind(): boolean
-  reset(): void
+  /** deterministic, JSON-stable snapshot for tests and save/restore */
+  toSnapshot(): unknown
+  reset(seed?: number): void
 }
+
+/* ===========================================================================
+ * ENGINE / UI CONTRACT — carried forward from upstream.
+ * ==========================================================================*/
 
 /* ---------------------------------------------------------------------------
  * Event bus.
  * -------------------------------------------------------------------------*/
 
+/** TV: flow vocabulary is re-cut when flows wire up with real routes (M2/M6). */
 export type FlowKind =
   | 'query'      // client → backend
   | 'result'     // backend → client
@@ -1232,7 +694,8 @@ export interface BusEvents {
   'tour:stop': Record<string, never>
   'tour:chapter': { index: number; total: number; title: string }
   'trace:open': { source?: 'button' | 'keyboard' }
-  'trace:run': { statement: QueryKind; table: string; playback: TracePlayback }
+  /** M3 tightens statement to ActionKind once the trace UI lands */
+  'trace:run': { statement: string; playback: TracePlayback }
   'panel:open': { panel: 'console' | 'inspector' | 'help'; item?: string }
   /** open one of the physical anatomy instruments, optionally for a component */
   'anatomy:open': { view: 'page' | 'directory'; id?: string }
@@ -1243,8 +706,6 @@ export interface BusEvents {
   'camera:gesture': { kind: 'pan' | 'rotate'; pointer: 'mouse' | 'touch' }
   'quality': { level: QualityLevel }
   'sim:reset': Record<string, never>
-  'checkpoint:start': { reason: string }
-  'checkpoint:end': { duration: number }
   'audio:toggle': Record<string, never>
   'ui:camera-preset': { preset: 'plan' }
   'ui:console': { open?: boolean; key?: string }
@@ -1268,6 +729,9 @@ export interface Bus {
  * World modules & the component registry.
  * -------------------------------------------------------------------------*/
 
+/** TV: district vocabulary is replaced wholesale with the Kubetropolis
+ * geography at M2 (civic, records, zoning, inspectors, node districts,
+ * harbor, ingress). The Postgres ids below keep the TV world compiling. */
 export type DistrictId =
   | 'clients'
   | 'backends'
@@ -1285,7 +749,7 @@ export type ComponentKind =
   | 'storage'   // on-disk
   | 'network'
   | 'client'
-  | 'concept'   // an idea, not a thing (MVCC, xmin horizon…)
+  | 'concept'   // an idea, not a thing (reconciliation, the watch stream…)
 
 export interface FocusSpec {
   /** world-space point the camera should look at */
@@ -1299,7 +763,7 @@ export interface FocusSpec {
 export interface ComponentDef {
   id: string
   name: string
-  /** one-line subtitle, e.g. "background process" */
+  /** one-line subtitle, e.g. "control-plane process" */
   role: string
   kind: ComponentKind
   district: DistrictId
@@ -1425,6 +889,7 @@ export interface TextTexOpts {
   letterSpacing?: string
 }
 
+/** TV: palette vocabulary is re-cut at the M2 retint. */
 export type ColorKey =
   | 'bg'
   | 'fog'
@@ -1506,7 +971,7 @@ export interface RouteDef {
 }
 
 /* ---------------------------------------------------------------------------
- * Inspector content (src/ui/content.ts).
+ * Inspector content (arrives with the HUD at M2).
  * -------------------------------------------------------------------------*/
 
 export interface ContentSection {
@@ -1520,10 +985,10 @@ export interface ContentSection {
  *
  * `url` is OPTIONAL on purpose: some references are books with no canonical
  * public page, and a guessed link is a fabricated citation. If there is no URL,
- * there is no link — panel.ts renders those as plain text.
+ * there is no link — the panel renders those as plain text.
  */
 export interface DocRef {
-  /** human label, e.g. "24.1. Routine Vacuuming" */
+  /** human label, e.g. "Pod Lifecycle" */
   label: string
   /** absolute https URL. Omit when no stable public page exists. */
   url?: string
@@ -1538,33 +1003,24 @@ export interface DocRef {
   verified?: boolean
 }
 
-/**
- * Egor Rogov, "PostgreSQL 14 Internals" (Postgres Professional).
- *
- * A paper/PDF book. There is DELIBERATELY no `url` field on this type and
- * panel.ts MUST NOT render one — see the comment in renderRefs().
- */
+/** A paper/PDF book citation — deliberately never rendered as a link. */
 export interface BookRef {
-  /** e.g. "PostgreSQL 14 Internals — Egor Rogov, Postgres Professional" */
   edition: string
-  /** e.g. "Part II. Buffer Cache and WAL" */
   part: string
-  /** e.g. "ch. 9 Buffer Cache (Cache Hits; Cache Misses)" */
   chapter: string
-  /** honest hedge, shown verbatim on hover, e.g. "chapter number not re-checked" */
+  /** honest hedge, shown verbatim on hover */
   confidence?: string
 }
 
 /** The reading list behind one component. Every field is optional. */
 export interface DocReferences {
-  /** postgresql.org/docs/18 — the reviewed manual */
+  /** kubernetes.io/docs — the reviewed manual */
   docs?: DocRef[]
-  /** github.com/postgres/postgres — the source */
+  /** github.com/kubernetes/kubernetes — the source */
   source?: DocRef[]
-  /** Hironobu Suzuki, "The Internals of PostgreSQL" — interdb.jp, free online */
-  suzuki?: DocRef & { chapter: string }
-  /** Egor Rogov, "PostgreSQL 14 Internals" — citation only, never a link */
-  rogov?: BookRef
+  /** KEPs — design rationale */
+  keps?: DocRef[]
+  book?: BookRef
 }
 
 export interface ComponentDoc {
@@ -1577,30 +1033,20 @@ export interface ComponentDoc {
   sections: ContentSection[]
   /** live metrics to show, resolved against SimState */
   metrics?: { label: string; get: (s: SimState) => string; hint?: string }[]
-  /** related GUCs the user can twiddle right there */
+  /** related knobs the user can twiddle right there */
   knobs?: (keyof Knobs)[]
-  /** explicit operations; unlike knobs these start work rather than set policy. */
-  actions?: (
-    | 'start-full-backup'
-    | 'start-pitr'
-    | 'start-restore-drill'
-    | 'start-switchover'
-    | 'trigger-failover'
-    | 'start-pg-rewind'
-  )[]
+  /** explicit operations; unlike knobs these start work rather than set policy (typed at M3) */
+  actions?: string[]
   /** ids of related components, rendered as jump links */
   see?: string[]
-  /** source pointers for the curious, e.g. src/backend/postmaster/checkpointer.c */
+  /** source pointers for the curious, e.g. pkg/controller/replicaset */
   source?: string[]
-  /**
-   * Richer, linkable reading list. Optional and additive: `source` above stays
-   * the plain-path list every doc already populates, and `refs.source` carries
-   * the same files with URLs and symbols. Once all 52 docs have `refs`, a later
-   * pass can drop `source` — but not in the same change, because 52 entries and
-   * the panel renderer both depend on it today.
-   */
   refs?: DocReferences
 }
+
+/* ---------------------------------------------------------------------------
+ * Tours & scenarios (runners arrive M4/M5; shapes are contract now).
+ * -------------------------------------------------------------------------*/
 
 export interface TourChapter {
   id: string
@@ -1617,7 +1063,11 @@ export interface TourChapter {
   knobs?: Partial<Knobs>
   /** scenario to trigger on entry */
   scenario?: string | null
+  /** mid-chapter canned actions fired ON CAMERA — the anti-passivity answer */
+  act?: [number, ActionKind][]
 }
+
+export type ScenarioChoiceId = string
 
 export interface ScenarioDef {
   id: string
@@ -1630,8 +1080,8 @@ export interface ScenarioDef {
   focus?: string
   /** scenario seconds at 1×; 0 = runs until cancelled */
   duration: number
-  /** Optional fixed statement stream; this selects a template, never a plan. */
-  query?: { kind: QueryKind; table: string }
+  /** optional canned action fired on entry */
+  action?: { kind: ActionKind }
   /** narration beats: [atSecond, title, body] */
   beats?: [number, string, string][]
   /** A non-modal operator decision shown only after its instrument threshold. */
@@ -1643,4 +1093,56 @@ export interface ScenarioDef {
       hint: string
     }[]
   }
+}
+
+/* ===========================================================================
+ * TV legacy (dies with layout.ts at M2)
+ * ---------------------------------------------------------------------------
+ * The temporarily-verbatim Postgres world files (world/layout.ts via
+ * core/catalog.ts, engine/collision.ts, engine/roads.ts) still reference the
+ * upstream city constants and table shapes. Values are frozen literals of the
+ * upstream CLAIM_VALUES they used to derive from. Nothing new may import from
+ * this block.
+ * ==========================================================================*/
+
+/** TV: shared-buffer visual sample grid (upstream bufferSample.gridWidth). */
+export const BUF_GRID = 32
+export const N_BUFFERS = BUF_GRID * BUF_GRID
+export type SampleFrames = number & { readonly __sampleFrames: unique symbol }
+export const PG_PAGE_BYTES = 8 * 1024
+export const SHARED_BUFFERS_MIN_MIB = 128
+export const SHARED_BUFFERS_MAX_MIB = 64 * 1024
+export const SHARED_BUFFERS_FULL_SAMPLE_MIB = 8 * 1024
+export const N_BACKEND_SLOTS = 16
+export const N_WAL_SEG_SLOTS = 14
+export const N_VAC_WORKERS = 3
+export const REPLICA_BUF_GRID = BUF_GRID
+
+export interface IndexDef {
+  id: string
+  name: string
+  /** btree | gin — purely cosmetic in the model, but shapes the 3D structure. */
+  kind: 'btree' | 'gin'
+  /** Relative visual size. */
+  pages: number
+}
+
+export interface TableDef {
+  id: string
+  name: string
+  /** Human blurb shown in the inspector. */
+  blurb: string
+  /** Base heap size in pages (visual + sim scale). */
+  pages: number
+  /** Rough tuples per page. */
+  tuplesPerPage: number
+  /** How hot this table is in the workload (relative weight, sums are normalised). */
+  weight: number
+  /** Fraction of updates that can be HOT (no index churn). */
+  hotFriendly: number
+  /** Accent colour (hex int) used by storage + flows. */
+  color: number
+  indexes: IndexDef[]
+  /** Does it have a TOAST sidecar? */
+  toast?: boolean
 }

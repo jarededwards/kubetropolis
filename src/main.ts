@@ -176,7 +176,7 @@ async function boot(): Promise<void> {
     rig.update(dt)
 
     // 3. the city
-    for (let i = 0; i < modules.length; i++) modules[i].update(cityDt, s, s.t)
+    for (let i = 0; i < modules.length; i++) modules[i].update(cityDt, s, s.now)
 
     // 4. draw
     gfx.render(dt, rawDt)

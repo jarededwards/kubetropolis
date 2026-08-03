@@ -26,11 +26,11 @@ import type { PlanBounds } from './plan'
 import type { DistrictId, SimState, WorldContext, WorldFactory, WorldModule } from '../core/types'
 
 export function worldGroundReadout(s: SimState): string {
-  return `${fmtNum(s.stats.tps, 0)} tps · ${s.stats.cacheHitPct.toFixed(1)}% cache hit · ${s.stats.runningBackends} active`
+  return `${s.vitals.podsRunning}/${s.vitals.podsTotal} pods running · ${s.vitals.nodesReady} nodes ready`
 }
 
 export function worldPitReadout(s: SimState): string {
-  return `${fmtNum(s.stats.ioReadPerSec)} read pages/s · ${fmtNum(s.stats.ioWritePerSec)} sampled write frames/s`
+  return `ledger rev ${fmtNum(s.vitals.etcdRevision, 0)} · watch lag ${s.vitals.watchMaxLagRev} rev`
 }
 
 /* ============================================================================

@@ -1,3 +1,9 @@
+/* Derived from PGSimCity src/core/trace-presentation.ts @ 6d2c854
+ * (Apache-2.0, © 2026 Nikolay Samokhvalov). Rewritten at M1 for the
+ * Kubernetes apply-journey stops. The full trace UI arrives at M3; this
+ * presentation layer is contract now so the model and tests agree on stage
+ * order and visited-state mechanics. */
+
 import { traceStopBit } from './model-helpers'
 import { CLAIM_VALUES } from './claims'
 import type { TraceRecord, TraceStop } from './types'
@@ -5,18 +11,23 @@ import type { TraceRecord, TraceStop } from './types'
 export type TraceStageState = 'wait' | 'now' | 'done' | 'skip'
 
 export interface PresentedTraceStage {
-  stop: Exclude<TraceStop, 'blocked'>
+  stop: TraceStop
   label: string
 }
 
+/** The lower-third rail order for the flagship `kubectl apply` trace. */
 export const PRESENTED_TRACE_STAGES: readonly PresentedTraceStage[] = [
-  { stop: 'connect', label: 'BACKEND' },
-  { stop: 'parse_plan', label: 'PLAN' },
-  { stop: 'fetch', label: 'FETCH' },
-  { stop: 'work', label: 'EXECUTE' },
-  { stop: 'wal', label: 'WAL' },
-  { stop: 'commit', label: 'COMMIT' },
-  { stop: 'send', label: 'RETURN' },
+  { stop: 'client', label: 'CLIENT' },
+  { stop: 'admission', label: 'ADMIT' },
+  { stop: 'etcd_commit', label: 'LEDGER' },
+  { stop: 'watch_fanout', label: 'FANOUT' },
+  { stop: 'sched_queue', label: 'QUEUE' },
+  { stop: 'filter_score', label: 'ZONING' },
+  { stop: 'bind', label: 'BIND' },
+  { stop: 'kubelet_sees', label: 'FOREMAN' },
+  { stop: 'image_pull', label: 'HARBOR' },
+  { stop: 'start_probes', label: 'PROBES' },
+  { stop: 'endpoints', label: 'DIRECTORY' },
   { stop: 'done', label: 'RECEIPT' },
 ]
 
@@ -26,12 +37,6 @@ export function formatModelMilliseconds(milliseconds: number, fractionDigits = 0
 }
 
 export function traceStageState(trace: TraceRecord, stop: TraceStop): TraceStageState {
-  const write =
-    trace.query === 'insert'
-    || trace.query === 'update'
-    || trace.query === 'delete'
-  if (!write && (stop === 'wal' || stop === 'commit')) return 'skip'
-  if (trace.stop === 'blocked' && stop === 'work') return 'now'
   if (trace.stop === stop) return 'now'
   return (trace.visited & traceStopBit(stop)) !== 0 ? 'done' : 'wait'
 }
