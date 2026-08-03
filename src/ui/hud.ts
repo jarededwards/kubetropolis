@@ -17,9 +17,11 @@ export function createHud(ctx: UiContext): UiModule {
   const top = document.getElementById('hud-top')
   if (!top) throw new Error('#hud-top missing')
 
-  const rev = el('span', { class: 'hud-chip pg-mono', text: 'rev 0' })
-  const pods = el('span', { class: 'hud-chip pg-mono', text: '0/0 pods' })
-  const nodes = el('span', { class: 'hud-chip pg-mono', text: '0 nodes' })
+  // Chips shrink and clip on narrow viewports instead of escaping them.
+  const chipStyle = { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: '1' }
+  const rev = el('span', { class: 'hud-chip pg-mono', text: 'rev 0', style: chipStyle })
+  const pods = el('span', { class: 'hud-chip pg-mono', text: '0/0 pods', style: chipStyle })
+  const nodes = el('span', { class: 'hud-chip pg-mono', text: '0 nodes', style: chipStyle })
   const fps = el('span', { class: 'hud-perf pg-mono', text: '' })
 
   const runBtn = el('button', {
@@ -74,7 +76,7 @@ export function createHud(ctx: UiContext): UiModule {
         minWidth: '0',
       },
     },
-    el('span', { class: 'hud-brand', text: 'Kubetropolis' }),
+    el('span', { class: 'hud-brand', text: 'Kubetropolis', style: { flexShrink: '0' } }),
     el('span', { class: 'hud-sep' }),
     rev,
     pods,

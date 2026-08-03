@@ -293,7 +293,7 @@ const tour = await evaluate(`(async () => {
   await new Promise((r) => setTimeout(r, 700))
   const chipGone = !document.querySelector('[data-tour-invitation]')
   const card = document.querySelector('.tour-narrate')
-  const spoke = (card?.textContent || '').includes('TOUR · CHAPTER 1/8')
+  const spoke = (card?.textContent || '').includes('TOUR · CHAPTER 1/10')
   const chips = card ? card.querySelectorAll('.ts').length : 0
   const oneCard = document.querySelectorAll('.tour-narrate').length === 1
   const r = card?.getBoundingClientRect?.()
@@ -309,7 +309,7 @@ const tour = await evaluate(`(async () => {
 if (!tour.chipBefore) fail('tour', 'first-run invitation chip missing on a fresh profile')
 if (!tour.chipGone) fail('tour', 'invitation chip survived tour start')
 if (!tour.spoke) fail('tour', 'card kicker missing the TOUR voice')
-if (tour.chips !== 8) fail('tour', `expected 8 progress chips, saw ${tour.chips}`)
+if (tour.chips !== 10) fail('tour', `expected 10 progress chips, saw ${tour.chips}`)
 if (!tour.oneCard) fail('tour', 'a second narration card exists')
 if (!tour.lowerThird) fail('tour', 'tour card is not in the lower third')
 if (!tour.ended) fail('tour', 'Escape did not end the tour')
