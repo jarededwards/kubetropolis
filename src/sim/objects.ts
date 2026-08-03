@@ -4,6 +4,7 @@
  * and read-only; every writer clones, modifies, and submits through the API.
  */
 
+import { CLAIM_VALUES } from '../core/claims'
 import type {
   DeploymentObj,
   K8sObject,
@@ -140,7 +141,7 @@ export function mkDeployment(
       maxSurgePct: spec.maxSurgePct,
       maxUnavailablePct: spec.maxUnavailablePct,
     },
-    status: { observed: 0, ready: 0, updated: 0 },
+    status: { observed: 0, ready: 0, updated: 0, observedGeneration: 0 },
   }
 }
 
@@ -176,7 +177,7 @@ export function mkNode(state: SimState, name: string): NodeObj {
     finalizers: [],
     spec: { taints: [] },
     status: {
-      conditions: [{ type: 'Ready', status: true, since: 0 }],
+      conditions: [{ type: 'Ready', status: 'True', since: 0 }],
       allocatable: { cpuM: NODE_CPU_M, memMi: NODE_MEM_MI },
     },
   }
@@ -192,7 +193,11 @@ export function mkLease(state: SimState, nodeName: string): LeaseObj {
     generation: 1,
     labels: {},
     finalizers: [],
-    spec: { holder: nodeName, durationSeconds: 40, renewedAt: 0 },
+    spec: {
+      holder: nodeName,
+      durationSeconds: CLAIM_VALUES.kubeletHeartbeat.leaseDurationSeconds,
+      renewedAt: 0,
+    },
   }
 }
 

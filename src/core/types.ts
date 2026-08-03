@@ -48,7 +48,11 @@ export interface ObjMeta {
   namespace: string
   /** etcd revision of the last committed write to this object */
   resourceVersion: number
-  /** bumps on spec change only — scaling a Deployment does NOT bump it */
+  /**
+   * Bumps on ANY spec change — the server owns it (a scale bumps it too).
+   * What a scale does NOT do is change the pod template, so no new
+   * pod-template-hash, no new ReplicaSet, no rollout revision.
+   */
   generation: number
   labels: Record<string, string>
   /** single-owner simplification of ownerReferences */
@@ -65,8 +69,12 @@ export interface ProbeSpec {
   initialDelaySeconds: number
 }
 
+export type TaintEffect = 'NoSchedule' | 'NoExecute'
+
 export interface Toleration {
   key: string
+  /** absent = tolerates the key regardless of effect (real: empty effect) */
+  effect?: TaintEffect
   seconds?: number
 }
 
@@ -118,6 +126,11 @@ export interface PodObj extends ObjMeta {
       backoffSec: number
       backoffUntil?: number
       exitCode?: number
+      /**
+       * Why the LAST run ended (real: lastState.terminated.reason) — kubectl
+       * flickers OOMKilled, then settles on the waiting reason CrashLoopBackOff.
+       */
+      lastExitReason?: 'Error' | 'OOMKilled'
       /** current working-set estimate, model MiB */
       memMi: number
     }
@@ -143,19 +156,26 @@ export interface DeploymentObj extends ObjMeta {
     maxSurgePct: number
     maxUnavailablePct: number
   }
-  status: { observed: number; ready: number; updated: number }
+  status: {
+    observed: number
+    ready: number
+    updated: number
+    /** the generation this desk has processed — "has the controller seen my change" */
+    observedGeneration: number
+  }
 }
 
 export interface NodeCondition {
   type: 'Ready'
-  status: boolean
+  /** tri-state like the real condition: heartbeat loss ⇒ Unknown, not False */
+  status: 'True' | 'False' | 'Unknown'
   /** model seconds of the last transition */
   since: number
 }
 
 export interface NodeObj extends ObjMeta {
   kind: 'Node'
-  spec: { unschedulable?: boolean; taints: { key: string }[] }
+  spec: { unschedulable?: boolean; taints: { key: string; effect: TaintEffect }[] }
   status: {
     conditions: NodeCondition[]
     allocatable: { cpuM: number; memMi: number }
@@ -214,6 +234,11 @@ export interface EtcdState {
   fsyncMs: number
   proposals: PendingWrite[]
   nextCompactionAt: number
+  /**
+   * Revision at the PREVIOUS compaction sweep — kube-apiserver compacts to
+   * the interval-ago revision, retaining ~one interval of watchable history.
+   */
+  lastIntervalRevision: number
 }
 
 /* ---------------------------------------------------------------------------
@@ -249,8 +274,18 @@ export interface WatchReg {
   sentRev: number
   /** committed records waiting out watchLatency before delivery */
   backlog: { rec: ChangeRecord; visibleAt: number }[]
+  /**
+   * Per-subscriber courier pace (≥1, seeded-random at registration): two
+   * watchers observe the same commit at DIFFERENT model times — the fact the
+   * delete-race lesson depends on.
+   */
+  latencyFactor: number
+  /** next periodic bookmark (~60 model s); idle watchers advance only then */
+  nextBookmarkAt: number
   /** set when compaction outran this watcher; it must relist */
   needsRelist: boolean
+  /** a relist is a full LIST — it takes real time, unlike a courier hop */
+  relistAt?: number
 }
 
 export interface ApiServerState {
@@ -330,7 +365,12 @@ export interface ControllerState {
    * expectations always live in ONE temporal frame (mixing frames is how a
    * desk double-counts its own unobserved work and oscillates).
    */
-  expect: Map<Uid, { creates: Uid[]; deletes: Uid[] }>
+  /**
+   * In-flight expectations with a TTL (real ExpectationsTimeout = 5 min): a
+   * leaked expectation — a create whose pod was hard-deleted before this
+   * desk's next read frame — must expire, never stall the desk forever.
+   */
+  expect: Map<Uid, { creates: Uid[]; deletes: Uid[]; expiresAt: number }>
 }
 
 /* ---------------------------------------------------------------------------

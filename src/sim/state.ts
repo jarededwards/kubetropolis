@@ -20,7 +20,7 @@ function mkController(id: ControllerId, periodic?: number): ControllerState {
     workqueue: [],
     sentRev: 0,
     reconciles: 0,
-    nextResyncAt: 3600, // long randomized resyncs are jittered on first use
+    nextResyncAt: 0, // first tick schedules the jittered cadence (model.ts)
     nextPeriodicAt: periodic,
     expect: new Map(),
   }
@@ -49,6 +49,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       fsyncMs: knobs.etcdFsyncMs,
       proposals: [],
       nextCompactionAt: 300,
+      lastIntervalRevision: 0,
     },
     api: { inflight: [], rejected: 0, watchers: [] },
     sched: { queue: [], backoff: [], scheduled: 0, assumed: new Map() },

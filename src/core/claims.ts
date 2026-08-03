@@ -59,9 +59,18 @@ export const CLAIM_VALUES = {
     graceSeconds: 50,
   },
   kubeletHeartbeat: {
-    statusUpdateSeconds: 10,
+    /** Lease renewal — every 10s, a quarter of the 40s lease duration */
+    leaseRenewSeconds: 10,
     leaseDurationSeconds: 40,
+    /** Node .status heartbeat — only every 5 minutes (nodeStatusReportFrequency) */
+    statusReportSeconds: 300,
     syncFrequencySeconds: 60,
+  },
+  controllerExpectations: {
+    /** ExpectationsTimeout in controller_utils.go */
+    ttlSeconds: 300,
+    /** model resync cadence for desks (real informer resync is ~12h) */
+    resyncSeconds: 300,
   },
   imagePull: {
     serialized: true,
@@ -77,6 +86,8 @@ export const CLAIM_VALUES = {
   /** Model-only pacing: deliberately slow so couriers are visible. */
   modelWatch: {
     latencyMs: 300,
+    /** periodic bookmark cadence (real bookmarks are opt-in, ~1/min, unguaranteed) */
+    bookmarkSeconds: 60,
   },
   modelEtcd: {
     fsyncMs: 5,
@@ -93,12 +104,18 @@ export interface K8sClaim {
   id: string
   /** One sentence, reader-facing, numbers matching CLAIM_VALUES. */
   statement: string
-  /** kubernetes.io (or KEP) URL. Omitted ONLY when coverage is 'modeled' with a modelNote. */
+  /** kubernetes.io (or KEP/source) URL. Omitted ONLY when coverage is 'modeled' with a modelNote. */
   source?: string
   coverage: ClaimCoverage
-  /** Required when no source: why the model owns this number. */
+  /** Required when no source, and on every downgraded coverage: what the model actually does. */
   modelNote?: string
-  /** Surfaces that read this claim (grep anchors, not enforced yet). */
+  /**
+   * CLAIM_VALUES group this claim's numbers live in. REQUIRED for 'exact'
+   * claims whose statement contains numbers — the structural test verifies a
+   * usedBy source file really reads CLAIM_VALUES.<values> (anti-rot).
+   */
+  values?: keyof typeof CLAIM_VALUES
+  /** Surfaces that read this claim. */
   usedBy: string[]
 }
 
@@ -112,7 +129,11 @@ export const CLAIMS: readonly K8sClaim[] = [
       + `timeoutSeconds ${CLAIM_VALUES.probes.timeoutSeconds}, `
       + `initialDelaySeconds ${CLAIM_VALUES.probes.initialDelaySeconds}.`,
     source: `${K8S_DOCS}tasks/configure-pod-container/configure-liveness-readiness-startup-probes/`,
-    coverage: 'exact',
+    coverage: 'modeled',
+    modelNote:
+      'Values are stamped and the readiness machinery runs them exactly; probe '
+      + 'timeoutSeconds is stated but timeouts are not modeled (FIDELITY.md).',
+    values: 'probes',
     usedBy: ['sim/apiserver', 'sim/kubelet'],
   },
   {
@@ -121,7 +142,10 @@ export const CLAIMS: readonly K8sClaim[] = [
       'A failed liveness probe kills and restarts the container; a failed readiness probe '
       + 'only marks the Pod unready and removes it from Service traffic.',
     source: `${K8S_DOCS}concepts/workloads/pods/probes/`,
-    coverage: 'exact',
+    coverage: 'modeled',
+    modelNote:
+      'The readiness half is implemented exactly; the liveness kill path arrives '
+      + 'with chaos wiring at M4 and is listed in FIDELITY.md until then.',
     usedBy: ['sim/kubelet'],
   },
   {
@@ -132,14 +156,18 @@ export const CLAIMS: readonly K8sClaim[] = [
       + `${CLAIM_VALUES.crashLoop.resetAfterCleanSeconds}s of clean running.`,
     source: `${K8S_DOCS}concepts/workloads/pods/pod-lifecycle/`,
     coverage: 'exact',
+    values: 'crashLoop',
     usedBy: ['sim/kubelet'],
   },
   {
     id: 'pod.restartPolicy',
     statement: `Pod restartPolicy defaults to ${CLAIM_VALUES.restartPolicy.default}.`,
     source: `${K8S_DOCS}concepts/workloads/pods/pod-lifecycle/`,
-    coverage: 'exact',
-    usedBy: ['sim/kubelet'],
+    coverage: 'absent',
+    modelNote:
+      'The restartPolicy field is not modeled; Always semantics are implicit in '
+      + 'the restart ladder. Disclosed in FIDELITY.md.',
+    usedBy: ['FIDELITY.md'],
   },
   {
     id: 'pod.phases',
@@ -155,15 +183,20 @@ export const CLAIMS: readonly K8sClaim[] = [
       + 'the kubelet sends SIGTERM first and SIGKILL when the grace period expires.',
     source: `${K8S_DOCS}concepts/workloads/pods/pod-lifecycle/#pod-termination`,
     coverage: 'exact',
-    usedBy: ['sim/apiserver', 'sim/kubelet'],
+    values: 'termination',
+    usedBy: ['sim/apiserver', 'sim/kubelet', 'core/types'],
   },
   {
     id: 'evict.toleration300',
     statement:
-      'Pods are created with node.kubernetes.io/not-ready and unreachable tolerations of '
+      'Pods are created with node.kubernetes.io/not-ready and unreachable NoExecute tolerations of '
       + `${CLAIM_VALUES.tolerations.defaultSeconds}s, so they stay bound five minutes after a node is lost.`,
     source: `${K8S_DOCS}concepts/scheduling-eviction/taint-and-toleration/#taint-based-evictions`,
-    coverage: 'exact',
+    coverage: 'modeled',
+    modelNote:
+      'The tolerations are stamped exactly (with their NoExecute effect); the '
+      + 'eviction countdown they gate arrives at M8 and FIDELITY.md says so.',
+    values: 'tolerations',
     usedBy: ['sim/apiserver'],
   },
   {
@@ -173,16 +206,30 @@ export const CLAIMS: readonly K8sClaim[] = [
       + `NotReady after ${CLAIM_VALUES.nodeMonitor.graceSeconds}s without a heartbeat (current default; historically 40s).`,
     source: 'https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/',
     coverage: 'exact',
+    values: 'nodeMonitor',
     usedBy: ['sim/nodes'],
   },
   {
     id: 'kubelet.heartbeat',
     statement:
-      `The kubelet reports status every ${CLAIM_VALUES.kubeletHeartbeat.statusUpdateSeconds}s and renews a Lease with a `
-      + `${CLAIM_VALUES.kubeletHeartbeat.leaseDurationSeconds}s duration.`,
-    source: 'https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/',
+      `The kubelet renews its Lease every ${CLAIM_VALUES.kubeletHeartbeat.leaseRenewSeconds}s — a quarter of the `
+      + `${CLAIM_VALUES.kubeletHeartbeat.leaseDurationSeconds}s lease duration — while the Node .status heartbeat `
+      + `runs only every ${CLAIM_VALUES.kubeletHeartbeat.statusReportSeconds / 60} minutes.`,
+    source: 'https://kubernetes.io/docs/reference/node/node-status/#heartbeats',
     coverage: 'exact',
-    usedBy: ['sim/nodes'],
+    values: 'kubeletHeartbeat',
+    usedBy: ['sim/nodes', 'sim/objects'],
+  },
+  {
+    id: 'controller.expectations',
+    statement:
+      'Controller expectations — in-flight creates/deletes a desk is waiting to observe — expire after '
+      + `${CLAIM_VALUES.controllerExpectations.ttlSeconds / 60} minutes (ExpectationsTimeout), so a lost event can `
+      + 'never stall reconciliation forever.',
+    source: 'https://github.com/kubernetes/kubernetes/blob/master/pkg/controller/controller_utils.go',
+    coverage: 'exact',
+    values: 'controllerExpectations',
+    usedBy: ['sim/controllers/replicaset', 'sim/controllers/deployment'],
   },
   {
     id: 'kubelet.sync',
@@ -191,6 +238,7 @@ export const CLAIMS: readonly K8sClaim[] = [
       + `${CLAIM_VALUES.kubeletHeartbeat.syncFrequencySeconds}s even without watch events.`,
     source: 'https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/',
     coverage: 'exact',
+    values: 'kubeletHeartbeat',
     usedBy: ['sim/kubelet'],
   },
   {
@@ -198,13 +246,15 @@ export const CLAIMS: readonly K8sClaim[] = [
     statement: 'The kubelet pulls images one at a time per node by default (serializeImagePulls).',
     source: 'https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/',
     coverage: 'exact',
+    values: 'imagePull',
     usedBy: ['sim/kubelet'],
   },
   {
     id: 'images.pullPolicy',
     statement:
-      'Omitting imagePullPolicy defaults to Always for :latest or untagged images and IfNotPresent otherwise.',
-    source: `${K8S_DOCS}concepts/containers/images/`,
+      'Omitting imagePullPolicy defaults to Always for :latest or untagged images, and IfNotPresent '
+      + 'otherwise — including digest-pinned images.',
+    source: `${K8S_DOCS}concepts/containers/images/#imagepullpolicy-defaulting`,
     coverage: 'exact',
     usedBy: ['sim/apiserver'],
   },
@@ -212,17 +262,33 @@ export const CLAIMS: readonly K8sClaim[] = [
     id: 'images.backoffCap',
     statement: `Failed image pulls retry with a backoff that grows to ${CLAIM_VALUES.imagePull.backoffCapSeconds}s.`,
     source: `${K8S_DOCS}concepts/containers/images/`,
-    coverage: 'exact',
-    usedBy: ['sim/kubelet'],
+    coverage: 'absent',
+    modelNote:
+      'No pull-failure path exists yet: a registry outage stalls the crane rather '
+      + 'than raising ErrImagePull/ImagePullBackOff. Arrives with the image-pull-storm '
+      + 'scenario at M4; disclosed in FIDELITY.md.',
+    usedBy: ['FIDELITY.md'],
   },
   {
     id: 'etcd.compaction',
     statement:
-      `The API server requests etcd compaction every ${CLAIM_VALUES.etcdCompaction.intervalSeconds}s by default; `
-      + 'watchers older than the compacted revision must relist.',
+      `The API server requests etcd compaction every ${CLAIM_VALUES.etcdCompaction.intervalSeconds}s by default, `
+      + 'compacting to the previous interval\'s revision; watchers older than that must relist.',
     source: 'https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/',
     coverage: 'exact',
+    values: 'etcdCompaction',
     usedBy: ['sim/etcd'],
+  },
+  {
+    id: 'watch.bookmarks',
+    statement:
+      `Idle watchers advance by periodic bookmarks (~${CLAIM_VALUES.modelWatch.bookmarkSeconds} model s here); `
+      + 'real bookmarks are opt-in, roughly once a minute, and clients may not assume any interval.',
+    source: `${K8S_DOCS}reference/using-api/api-concepts/#watch-bookmarks`,
+    coverage: 'modeled',
+    modelNote: 'Cadence is a model number chosen to be far inside the compaction interval.',
+    values: 'modelWatch',
+    usedBy: ['sim/apiserver'],
   },
   {
     id: 'model.watchLatency',

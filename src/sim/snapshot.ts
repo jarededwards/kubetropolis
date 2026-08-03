@@ -31,6 +31,7 @@ export function toSnapshot(state: SimState): unknown {
         uid: p.req.obj.uid,
       })),
       nextCompactionAt: round6(state.etcd.nextCompactionAt),
+      lastIntervalRevision: state.etcd.lastIntervalRevision,
     },
     api: {
       inflight: state.api.inflight.map((r) => ({
@@ -45,7 +46,10 @@ export function toSnapshot(state: SimState): unknown {
         subscriber: w.subscriber,
         kinds: [...w.kinds],
         sentRev: w.sentRev,
+        latencyFactor: round6(w.latencyFactor),
+        nextBookmarkAt: round6(w.nextBookmarkAt),
         needsRelist: w.needsRelist,
+        relistAt: w.relistAt === undefined ? null : round6(w.relistAt),
         backlog: w.backlog.map((b) => ({ rev: b.rec.rev, visibleAt: round6(b.visibleAt) })),
       })),
     },
@@ -67,7 +71,7 @@ export function toSnapshot(state: SimState): unknown {
           nextPeriodicAt: c.nextPeriodicAt === undefined ? null : round6(c.nextPeriodicAt),
           expect: [...c.expect.entries()]
             .sort(([a], [b]) => (a < b ? -1 : 1))
-            .map(([uid, e]) => [uid, { ...e }]),
+            .map(([uid, e]) => [uid, { ...e, expiresAt: round6(e.expiresAt) }]),
         },
       ]),
     ),
