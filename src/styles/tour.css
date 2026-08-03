@@ -356,6 +356,9 @@ body.pg-tour #hud-bottom:focus-within {
   font-family: var(--f-mono);
   font-size: var(--fs-micro);
   text-align: right;
+  /* Stop labels never clip mid-word: the rail may wrap onto its own line. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .tour-narrate__close {

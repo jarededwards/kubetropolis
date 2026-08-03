@@ -212,9 +212,9 @@ describe('tour binder', () => {
     const card = narration()
     const satisfactions: (() => void)[] = [
       () => bus.emit('select', { id: 'records.vault' }), // ch1
-      () => bus.emit('trace:open', { source: 'keyboard' }), // ch2
+      () => bus.emit('action:run', { kind: 'apply-pod' }), // ch2 — a real filing, not just opening the drawer
       () => bus.emit('action:run', { kind: 'delete-pod' }), // ch3
-      () => bus.emit('trace:open', { source: 'keyboard' }), // ch4
+      () => bus.emit('action:run', { kind: 'scale-6' }), // ch4 — same: filing satisfies, browsing does not
       () => handle.satisfy(), // ch5 rollback (button-equivalent)
       () => handle.satisfy(), // ch6 flake (button-equivalent)
       () => handle.satisfy(), // ch7 restore power (button-equivalent)
