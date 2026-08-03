@@ -60,6 +60,19 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
   windows.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SLOTS * 3), 3)
   const doors = new THREE.InstancedMesh(theme.box(3.2, 1.4, 1.2), theme.neon(COLOR.podReady, 1.6), SLOTS)
   doors.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SLOTS * 3), 3)
+
+  /* Overflow markers: the sim is uncapped; the pads are not. When a district
+   * holds more pods than pads, a hazard strip at the district edge says so —
+   * visuals stay honest about what they cannot draw. */
+  const overflowTiles: THREE.Mesh[] = []
+  for (let n = 0; n < NODE_IDS.length; n++) {
+    const [ex, , ez] = nodePadPos(n, PAD_COUNT - 1)
+    const tile = new THREE.Mesh(ctx.theme.box(10, 0.5, 2.4), ctx.theme.neon(COLOR.warn, 1.1))
+    tile.position.set(ex - 4, 0.6, ez + 5.4)
+    tile.visible = false
+    group.add(tile)
+    overflowTiles.push(tile)
+  }
   group.add(bodies)
   group.add(windows)
   group.add(doors)
@@ -71,6 +84,21 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
   const seen: (PodObj | null)[] = new Array(SLOTS).fill(null)
   /** Reused per-frame: pods needing a slot this frame. */
   const homeless: PodObj[] = []
+  const overflowCounts = new Array(NODE_IDS.length).fill(0)
+  /* Per-template tint: the renovation wave must READ as a wave. Colors are
+   * cached per hash — allocation on first sight only, never per frame. */
+  const hashTints = new Map<string, THREE.Color>()
+  function tintFor(hashLabel: string | undefined): THREE.Color | null {
+    if (!hashLabel) return null
+    let t = hashTints.get(hashLabel)
+    if (!t) {
+      let h = 0
+      for (let i = 0; i < hashLabel.length; i++) h = (h * 31 + hashLabel.charCodeAt(i)) | 0
+      t = new THREE.Color().setHSL(((h >>> 0) % 360) / 360, 0.42, 0.46)
+      hashTints.set(hashLabel, t)
+    }
+    return t
+  }
 
   /* --- per-district furniture --------------------------------------------- */
   const substationNeedles: THREE.Mesh[] = []
@@ -257,6 +285,7 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
      * free pad of their node. `seen` and `homeless` are reused arrays. */
     for (let i = 0; i < SLOTS; i++) seen[i] = null
     homeless.length = 0
+    overflowCounts.fill(0)
 
     for (const obj of s.etcd.objects.values()) {
       if (obj.kind !== 'Pod') continue
@@ -282,15 +311,18 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       const nodeIdx = nodeIndexById.get(pod.spec.nodeName as string)
       if (nodeIdx === undefined) continue
       const base = slotBase(nodeIdx)
+      let housed = false
       for (let i = base; i < base + PAD_COUNT; i++) {
         if (slots[i].uid === null && seen[i] === null) {
           slots[i].uid = pod.uid
           slots[i].rise = 0
           slots[i].pulse = 0
           seen[i] = pod
+          housed = true
           break
         }
       }
+      if (!housed) overflowCounts[nodeIdx] += 1
     }
 
     /* 2. Drive the three instanced meshes. */
@@ -333,7 +365,13 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       _s.set(1, h, 1)
       _m.compose(_p, _q.identity(), _s)
       bodies.setMatrixAt(i, _m)
-      _c.setHex(terminating ? COLOR.podTerminating : backoff ? COLOR.podBackoff : COLOR.kubelet)
+      if (terminating) _c.setHex(COLOR.podTerminating)
+      else if (backoff) _c.setHex(COLOR.podBackoff)
+      else {
+        const tint = tintFor(pod.labels['pod-template-hash'])
+        if (tint) _c.copy(tint)
+        else _c.setHex(COLOR.kubelet)
+      }
       if (backoff) _c.multiplyScalar(flicker)
       bodies.setColorAt(i, _c)
 
@@ -374,6 +412,17 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
     if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true
     if (windows.instanceColor) windows.instanceColor.needsUpdate = true
     if (doors.instanceColor) doors.instanceColor.needsUpdate = true
+
+    /* 2b. Overflow markers pulse when pads run out. */
+    for (let n = 0; n < NODE_IDS.length; n++) {
+      const count = overflowCounts[n]
+      const tile = overflowTiles[n]
+      tile.visible = count > 0
+      if (count > 0) {
+        const w = Math.min(1 + count * 0.35, 4)
+        tile.scale.set(w, 1 + 0.25 * Math.sin(t * 4), 1)
+      }
+    }
 
     /* 3. District furniture. */
     for (let n = 0; n < NODE_IDS.length; n++) {

@@ -27,8 +27,9 @@ export const SCENARIOS: readonly ScenarioDef[] = [
     ensureDeployment: true,
     beats: [
       [0, 'Nothing is idle',
-        'Heartbeats every 10 model seconds, readiness visits every 10, couriers on every road. '
-        + 'Watch the rhythm: a quiet cluster is a cadence, not a silence.'],
+        `Heartbeats every ${CLAIM_VALUES.kubeletHeartbeat.leaseRenewSeconds} model seconds, readiness `
+        + `visits every ${CLAIM_VALUES.probes.periodSeconds}, couriers on every road. Watch the rhythm: `
+        + 'a quiet cluster is a cadence, not a silence.'],
       [30, 'Read a district',
         'The substation needle is CPU requests; the water tower is memory. The gap between '
         + 'allocated and allocatable is the room the Zoning Office still has to work with.'],

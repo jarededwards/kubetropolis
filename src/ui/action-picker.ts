@@ -6,6 +6,7 @@
  */
 
 import { listActions } from '../sim/actions'
+import { narration } from './narration'
 import type { UiContext, UiModule } from './uikit'
 import { el, setText } from './uikit'
 
@@ -16,7 +17,10 @@ export function createActionPicker(ctx: UiContext): UiModule {
 
   const grid = el('div', { class: 'trace-picker__grid' })
   const actions = listActions()
+  const dynamicCmds: Array<{ el: HTMLElement; forState: (s: import('../core/types').SimState) => string }> = []
   for (const a of actions) {
+    const cmdEl = el('code', { class: 'pg-mono', text: a.cmd, style: { display: 'block', margin: '6px 0' } })
+    if (a.cmdFor) dynamicCmds.push({ el: cmdEl, forState: a.cmdFor })
     grid.appendChild(
       el(
         'button',
@@ -25,12 +29,32 @@ export function createActionPicker(ctx: UiContext): UiModule {
           on: {
             click: () => {
               hide()
-              bus.emit('trace:run', { statement: a.kind, playback: 'step' })
+              if (a.traceable) {
+                bus.emit('trace:run', { statement: a.kind, playback: 'step' })
+                return
+              }
+              // Untraced actions execute live with a one-line filing note —
+              // unless a trace or scenario already owns the card (one voice).
+              ctx.sim.apply(a.mkCommand(ctx.sim.state))
+              if (!ctx.sim.state.trace && !ctx.sim.state.scenarioRun) {
+                const card = narration()
+                card.setContent({
+                  kicker: 'FILED',
+                  title: a.label,
+                  body: a.watch,
+                  code: a.cmdFor?.(ctx.sim.state) ?? a.cmd,
+                })
+                card.setStages([])
+                card.setTransport([
+                  el('button', { class: 'pg-btn pg-btn--ghost', text: '✕', on: { click: () => card.hide() } }),
+                ])
+                card.show()
+              }
             },
           },
         },
         el('span', {}, el('strong', { text: a.label })),
-        el('code', { class: 'pg-mono', text: a.cmd, style: { display: 'block', margin: '6px 0' } }),
+        cmdEl,
         a.yaml
           ? el('pre', {
               class: 'pg-mono',
@@ -91,6 +115,7 @@ export function createActionPicker(ctx: UiContext): UiModule {
   function show(): void {
     open = true
     overlay.hidden = false
+    for (const d of dynamicCmds) setText(d.el, d.forState(ctx.sim.state))
     // one surface at a time: drop the inspector selection
     bus.emit('select', { id: null })
   }

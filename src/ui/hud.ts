@@ -28,6 +28,12 @@ export function createHud(ctx: UiContext): UiModule {
     title: 'Trace a kubectl command through the city (R)',
     on: { click: () => bus.emit('trace:open', { source: 'button' }) },
   })
+  const scenarioBtn = el('button', {
+    class: 'pg-btn',
+    text: 'scenarios ▸',
+    title: 'Break the city on purpose (S)',
+    on: { click: () => bus.emit('scenario:open', { source: 'button' }) },
+  })
   const themeBtn = el('button', {
     class: 'pg-btn pg-btn--ghost',
     text: 'day/night',
@@ -63,6 +69,7 @@ export function createHud(ctx: UiContext): UiModule {
       { class: 'hud-right', style: { display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' } },
       fps,
       runBtn,
+      scenarioBtn,
       searchBtn,
       themeBtn,
       helpBtn,

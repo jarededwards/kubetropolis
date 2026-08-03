@@ -235,6 +235,19 @@ export function createHarbor(ctx: WorldContext): WorldModule {
     readout: (s: SimState) => (s.operatorRunning ? 'staffed — reconciling' : 'dark. nobody holds this watch'),
   })
 
+  /* --- fog bank (chaosRegistryOutage) --------------------------------------- */
+  const fog = new THREE.Group()
+  for (let i = 0; i < 3; i++) {
+    const slab = new THREE.Mesh(
+      theme.box(46 - i * 8, 7 + i * 3, 30 - i * 5),
+      new THREE.MeshBasicMaterial({ color: 0x9aa7b4, transparent: true, opacity: 0.16 + i * 0.05, depthWrite: false }),
+    )
+    slab.position.set(cAt[0] - 8 + i * 10, 6 + i * 3, cAt[2] + 4 - i * 6)
+    fog.add(slab)
+  }
+  fog.visible = false
+  group.add(fog)
+
   /* --- update ---------------------------------------------------------------- */
 
   let craneSwing = 0
@@ -265,6 +278,10 @@ export function createHarbor(ctx: WorldContext): WorldModule {
     ship.rotation.z = Math.sin(t * 0.4) * 0.012
 
     shackLamp.visible = s.operatorRunning
+
+    // the fog bank rolls in when the registry is unreachable
+    fog.visible = !s.harbor.reachable
+    if (fog.visible) fog.position.x = Math.sin(t * 0.18) * 3
   }
 
   return { id: 'harbor', group, update }
