@@ -255,6 +255,35 @@ if (!trace.tracing) fail('trace', 'sim trace did not arm')
 if (!trace.endedOnEscape) fail('trace', 'Escape did not end the trace/restore knobs')
 if (!trace.hidden) fail('trace', 'card stayed visible after close')
 
+/* M4 — scenarios: the panel is a lone surface; beats and the decision speak
+ * through THE narration card; Escape ends the run and restores knobs. */
+const scenario = await evaluate(`(async () => {
+  const K = window.KUBETROPOLIS
+  K.bus.emit('scenario:open', {})
+  const overlays = Array.from(document.querySelectorAll('.trace-picker'))
+  const overlay = overlays.find((o) => (o.textContent || '').includes('SCENARIOS'))
+  const openOk = !!overlay && !overlay.hidden
+  const escPayload = { handled: false }
+  K.bus.emit('ui:escape', escPayload)
+  const closed = !!overlay && overlay.hidden
+  K.sim.startScenario('steady-state')
+  await new Promise((r) => setTimeout(r, 900))
+  const card = document.querySelector('.tour-narrate')
+  const live = !!card && card.classList.contains('is-live')
+  const spoke = (card?.textContent || '').includes('SCENARIO')
+  const oneCard = document.querySelectorAll('.tour-narrate').length === 1
+  const endPayload = { handled: false }
+  K.bus.emit('ui:escape', endPayload)
+  const ended = endPayload.handled && K.sim.state.scenarioRun === null
+  return { openOk, closed, live, spoke, oneCard, ended }
+})()`)
+if (!scenario.openOk) fail('scenario', 'panel did not open on scenario:open')
+if (!scenario.closed) fail('scenario', 'Escape did not close the panel')
+if (!scenario.live) fail('scenario', 'beats did not reach the narration card')
+if (!scenario.spoke) fail('scenario', 'card kicker missing the SCENARIO voice')
+if (!scenario.oneCard) fail('scenario', 'a second narration card exists')
+if (!scenario.ended) fail('scenario', 'Escape did not end the scenario')
+
 removeProcessCleanup()
 await run.cleanup()
 
@@ -263,5 +292,5 @@ if (failures.length > 0) {
   for (const f of failures) console.error('  ' + f)
   process.exit(1)
 }
-console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help + picker + trace card')
+console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help + picker + trace card + scenarios')
 process.exit(0)

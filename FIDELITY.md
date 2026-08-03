@@ -110,4 +110,22 @@ number of fixed steps, never their size.
 - **Taint-based eviction**: the stamped 300s tolerations gate an eviction
   countdown that arrives at M8.
 
+## Modeled simplifications (M4)
+
+- **The OOM leak is a chaos construct.** Only the demo `:v2` image leaks, at a
+  fixed model rate. The kernel's check reads the kubelet's LOCAL working set;
+  published status updates coarsely (real cadvisor-style sampling, simplified).
+- **Readiness flake is windowed, not random**: 40-model-second bad windows
+  alternating with good ones — deterministic, sized so failureThreshold can be
+  crossed at the default probe period.
+- **Rolling updates**: "available" means Ready (no minReadySeconds);
+  progressDeadlineSeconds and revision annotations are not modeled (the
+  previous ReplicaSet is found by hash, kept at zero replicas); old contracts
+  scale down oldest-first against a same-frame ready budget rather than the
+  real proportional spread.
+- **Both-zero pacing** (maxSurge=maxUnavailable=0) is clamped to surge 1 with
+  a warning; real validation rejects the manifest outright.
+- **Scenario knob restore is wholesale**: ending a scenario restores the knob
+  set captured at entry — a knob you changed mid-scenario is restored away.
+
 *This file grows as the model does; it is enforced by the claims spine from M3.*
