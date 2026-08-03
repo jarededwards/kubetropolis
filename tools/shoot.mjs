@@ -1,3 +1,7 @@
+/* Derived from PGSimCity tools/shoot.mjs @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the CDP gate path is
+ * env-overridable, Chrome is auto-detected on macOS, and the app probe
+ * targets window.KUBETROPOLIS. */
 // CDP driver: boot a page in headless Chrome, collect console + exceptions,
 // wait real wall-clock time for software WebGL, screenshot, probe app state.
 // Named *-keep so the scratchpad sweep does not delete it.

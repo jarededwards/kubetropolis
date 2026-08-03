@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/engine/light-shafts.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: internal material/
+ * texture names renamed from the PGSimCity.* namespace. */
 import * as THREE from 'three'
 import { FullScreenQuad, Pass } from 'three/examples/jsm/postprocessing/Pass.js'
 
@@ -201,12 +204,12 @@ export class LightShaftPass extends Pass {
       stencilBuffer: false,
     }
     this.maskTarget = new THREE.WebGLRenderTarget(1, 1, targetOptions)
-    this.maskTarget.texture.name = 'PGSimCity.lightShaft.mask'
+    this.maskTarget.texture.name = 'Kubetropolis.lightShaft.mask'
     this.blurTarget = new THREE.WebGLRenderTarget(1, 1, targetOptions)
-    this.blurTarget.texture.name = 'PGSimCity.lightShaft.blur'
+    this.blurTarget.texture.name = 'Kubetropolis.lightShaft.blur'
 
     this.maskMaterial = new THREE.ShaderMaterial({
-      name: 'PGSimCity.LightShaftMask',
+      name: 'Kubetropolis.LightShaftMask',
       uniforms: {
         tDepth: { value: null },
         uSunUv: { value: this.sunUv },
@@ -220,7 +223,7 @@ export class LightShaftPass extends Pass {
       toneMapped: false,
     })
     this.blurMaterial = new THREE.ShaderMaterial({
-      name: 'PGSimCity.LightShaftBlur',
+      name: 'Kubetropolis.LightShaftBlur',
       defines: { PG_SHAFT_SAMPLES: 6 },
       uniforms: {
         tMask: { value: this.maskTarget.texture },
@@ -236,7 +239,7 @@ export class LightShaftPass extends Pass {
       toneMapped: false,
     })
     this.compositeMaterial = new THREE.ShaderMaterial({
-      name: 'PGSimCity.LightShaftComposite',
+      name: 'Kubetropolis.LightShaftComposite',
       uniforms: {
         tShaft: { value: this.blurTarget.texture },
         tDepth: { value: null },

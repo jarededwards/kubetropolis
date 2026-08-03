@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/ui/boot.test.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: re-pinned to the
+ * Kubetropolis boot ladder with a monotonicity assertion. */
 import { describe, expect, it, vi } from 'vitest'
 import {
   BOOT_STEPS,

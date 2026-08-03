@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Derived from PGSimCity tools/reap.sh @ 6d2c854 (Apache-2.0,
+# © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the CDP gate
+# path is env-overridable.
 set -Eeuo pipefail
 
 # Reap what the screenshot work leaves behind. Run every loop iteration.

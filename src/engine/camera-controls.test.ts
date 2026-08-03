@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/engine/camera-controls.test.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the plaza-ceiling
+ * constant is re-derived for the Kubetropolis civic plaza and the outline
+ * mock is re-pointed from world/slonik to world/plan. */
 import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,7 +11,7 @@ import { installTestDom } from '../../test/dom'
 import { CITY } from '../world/layout'
 import { createCameraRig, type CameraRig } from './camera'
 
-vi.mock('../world/slonik', () => ({
+vi.mock('../world/plan', () => ({
   PLAN_UP: [0, 1],
   sampleOutline: () => [-100, -100, 100, -100, 100, 100, -100, 100],
 }))

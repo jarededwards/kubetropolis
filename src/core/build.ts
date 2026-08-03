@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/core/build.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: build-metadata define
+ * names renamed to the __KUBETROPOLIS_*__ namespace. */
 declare const __KUBETROPOLIS_VERSION__: string
 declare const __KUBETROPOLIS_GIT_SHA__: string
 

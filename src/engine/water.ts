@@ -1,10 +1,13 @@
+/* Derived from PGSimCity src/engine/water.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the shared-buffer plaza
+ * swim volume is repurposed as the harbor sea, sized by the city plan's sea
+ * rectangle instead of the buffer-pool grid. */
 import * as THREE from 'three'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import { atmosphere } from '../core/theme'
 import type { QualityLevel, QualitySettings } from '../core/types'
 import { damp, makeRng } from '../core/util'
 import { CITY } from '../world/layout'
-/* Derived file: see header of world/layout.ts; water resized for the harbor sea (M2). */
 
 export interface BufferWaterApi {
   group: THREE.Group
@@ -219,7 +222,7 @@ export function createBufferWater(
   group.add(surface)
 
   const reflectionTarget = surface.getRenderTarget()
-  reflectionTarget.texture.name = 'PGSimCity.water.planar-reflection'
+  reflectionTarget.texture.name = 'Kubetropolis.water.planar-reflection'
   reflectionTarget.texture.generateMipmaps = false
   const reflectionSize = new THREE.Vector2()
   const texelSize = surfaceMaterial.uniforms.uTexelSize.value as THREE.Vector2
@@ -308,7 +311,7 @@ export function createBufferWater(
     PARTICULATE_TEXTURE_SIZE,
     THREE.RGBAFormat,
   )
-  particulateTexture.name = 'PGSimCity.water.particulate'
+  particulateTexture.name = 'Kubetropolis.water.particulate'
   particulateTexture.needsUpdate = true
   const particulateMaterial = new THREE.PointsMaterial({
     color: 0xd9efff,

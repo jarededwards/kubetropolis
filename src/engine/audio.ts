@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/engine/audio.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the persisted-settings
+ * localStorage key is renamed to the kubetropolis.* namespace. */
 import type { Bus } from '../core/types'
 import { clamp, makeRng } from '../core/util'
 

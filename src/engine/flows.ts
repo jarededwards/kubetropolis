@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/engine/flows.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the FlowKind vocabulary
+ * is rewritten from PostgreSQL packet kinds to Kubernetes flow kinds; the
+ * instanced pool/route engine is kept verbatim. */
 import * as THREE from 'three'
 import type { Bus, FlowKind, FlowRequest, QualitySettings, ThemeApi } from '../core/types'
 import { ROUTES, routeCurve } from '../world/layout'
