@@ -30,9 +30,13 @@ issue tracking if hosting is chosen). Full plan:
       YAML receipts + fidelity sentence; flows moving on the roads (couriers,
       work orders, bind writes, pull trucks); claims-copy enforcement live;
       201/201 tests; 12-shot verified strip.
-- [ ] **M4 — Workloads act** — scale/rolling-update/delete-pod actions;
-      scenario runtime + steady-state, crashloop, oomkill, image-pull-storm;
-      KNOB-AUDIT.md begins.
+- [x] **M4 — Workloads act** *(2026-08-03)* — readiness-gated rolling updates
+      w/ claim-backed surge/unavailable pacing (proofs: ≤4/≥3 @ 3 replicas,
+      rollback reuses the old RS); chaos paths real (crashloop, persistent OOM
+      leak, registry outage w/ ErrImagePull→ImagePullBackOff ladder, readiness
+      flake); scenario engine w/ beats + non-modal operator decisions; picker
+      at 5 actions w/ live victim receipts; fog bank + hash tints + overflow
+      strips; KNOB-AUDIT live (24 knobs); 232/232 tests.
 - [ ] **M5 — Tour v1** — runner + chapters 1–5 & 10 with on-camera actions.
 - [ ] **M6 — Services, ingress, traffic** — readiness-gated request flows;
       delete-race trace variant; chapter 6.
