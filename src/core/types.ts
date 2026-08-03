@@ -1632,6 +1632,8 @@ export type TourArm =
   | 'rollback'
   | 'flake'
   | 'operator'
+  | 'restore'
+  | 'calm'
   | { action: ActionKind }
 
 export interface TourYourTurn {

@@ -228,6 +228,34 @@ const CATALOG: ActionDef[] = [
     traceable: true,
     mkCommand: () => samples.lighthouse(),
   },
+  {
+    kind: 'drain-node',
+    label: 'Drain node-b',
+    cmd: 'kubectl drain node-b --ignore-daemonsets',
+    watch:
+      'The gate closes to new permits and every building leaves by eviction paperwork — some of it comes back stamped DENIED.',
+    subject: 'node-b',
+    traceable: false,
+    mkCommand: () => samples.drain('node-b'),
+  },
+  {
+    kind: 'kill-node',
+    label: 'Cut power to node-b',
+    // Honest: no kubectl verb does this. It is the disaster, not a command.
+    cmd: 'chaos: cut power to node-b',
+    watch:
+      'Watch how long nothing happens — the 50-second grace, then the toleration countdowns. Both clocks are the lesson.',
+    subject: 'node-b',
+    traceable: false,
+    mkCommand: (state) => {
+      const down = state?.knobs.chaosNodeFail === 'node-b'
+      return samples.nodePower('node-b', down === true)
+    },
+    cmdFor: (state) =>
+      state.knobs.chaosNodeFail === 'node-b'
+        ? 'chaos: restore power to node-b'
+        : 'chaos: cut power to node-b',
+  },
 ]
 
 export function actionFor(kind: ActionKind): ActionDef | undefined {
