@@ -6,10 +6,13 @@ issue tracking if hosting is chosen). Full plan:
 
 ## Milestones
 
-- [ ] **M0 — Scaffold + vendor + first light** *(in progress)*
-      Vendored engine at 6d2c854; identity/legal files; lit ground+sky+water
-      renders at `vite preview`; shoot.mjs screenshot with zero console errors;
-      boundary + trademark tests green; legal checklist 1–8 done.
+- [x] **M0 — Scaffold + vendor + first light** *(2026-08-02, awaiting PO
+      sign-off on feat/m0-scaffold-vendor)* — vendored engine at 6d2c854;
+      identity/legal files; island plate + sky render at `vite preview`;
+      shoot.mjs screenshot clean (zero exceptions, probe healthy);
+      typecheck + 130/130 tests + build green; legal checklist 1–8 done.
+      Known TV artifact: Postgres district tints/labels on the ground come
+      from the temporarily-verbatim layout.ts and vanish at M2.
 - [ ] **M1 — The cluster ticks** — deterministic sim core (etcd, apiserver,
       scheduler, deployment/replicaset controllers, kubelet lifecycle);
       `KUBETROPOLIS.sim.apply(samplePod)` walks Pending→Running in a debug
