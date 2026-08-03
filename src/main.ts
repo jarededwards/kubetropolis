@@ -49,6 +49,11 @@ import { CITY } from './world/layout'
 
 import { BOOT_STEPS, failBoot, finishBoot, presentBootStep } from './ui/boot'
 import { createDebugOverlay } from './ui/debug-overlay'
+import { createHelp } from './ui/help'
+import { createHud } from './ui/hud'
+import { createInspector } from './ui/panel'
+import { createSearch } from './ui/search'
+import type { UiContext, UiModule } from './ui/uikit'
 
 const bootEl = document.getElementById('boot')
 const bootFill = document.getElementById('boot-fill')
@@ -149,6 +154,20 @@ async function boot(): Promise<void> {
   const picker = createPicker({ dom: gfx.renderer.domElement, camera, registry, bus, theme })
   scene.add(picker.group)
 
+  const uiCtx: UiContext = {
+    bus,
+    sim,
+    registry,
+    getFps: () => gfx.fps,
+    getQuality: () => gfx.quality,
+    getFlowStats: () => ({ active: flows.active, dropped: flows.dropped }),
+  }
+  const ui: UiModule[] = [createHud(uiCtx), createInspector(uiCtx), createSearch(uiCtx), createHelp(uiCtx)]
+
+  bus.on('ui:theme-toggle', () => {
+    setThemeMode(themeMode() === 'day' ? 'night' : 'day')
+  })
+
   /* --- bus wiring ---------------------------------------------------------- */
 
   bus.on('focus', ({ id, instant }) => {
@@ -229,6 +248,7 @@ async function boot(): Promise<void> {
     gfx.render(dt, rawDt)
     labels.update(dt, camera, s)
     labels.render(scene, camera)
+    for (let i = 0; i < ui.length; i++) ui[i].update(dt)
     overlay.update(s)
   }
 
@@ -247,6 +267,7 @@ async function boot(): Promise<void> {
     running = false
     window.removeEventListener('resize', onResize)
     overlay.dispose()
+    for (const m of ui) m.dispose()
     labels.dispose()
     water.dispose()
     timer.disconnect()
