@@ -1,10 +1,11 @@
-/* Kubetropolis boot — M0 first light.
+/* Kubetropolis boot.
  *
  * Modeled on PGSimCity's src/main.ts @ 6d2c854 (Apache-2.0, © 2026 Nikolay
- * Samokhvalov) but reduced to the M0 surface: renderer, camera rig, sky,
- * ground plate (the island), and the fixed-step timebase driving the M1-stub
- * simulation. Order matters: renderer → camera → simulation → world → loop.
- * World modules only ever read simulation state; UI talks over the bus.
+ * Samokhvalov), rewritten for Kubetropolis: renderer, camera rig, the island
+ * world (civic campus, node districts, harbor, ingress), flows, HUD, tour,
+ * traces and scenarios, all driven by the fixed-step Kubernetes simulation.
+ * Order matters: renderer → camera → simulation → world → loop. World modules
+ * only ever read simulation state; UI talks over the bus.
  */
 import * as THREE from 'three'
 

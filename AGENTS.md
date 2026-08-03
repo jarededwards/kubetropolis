@@ -27,7 +27,9 @@ screenshot (below).
   with `CDP_PORT` in 9500–9900 per agent.
 - Stage views through `window.KUBETROPOLIS` in preJS, e.g.
   `KUBETROPOLIS.bus.emit('focus',{id:'records.vault'})` — never poke internals.
-- Screenshots are CI/scratch artifacts. NEVER commit PNGs to the repo.
+- Screenshots are CI/scratch artifacts. NEVER commit PNGs to the repo —
+  with exactly two curated exceptions: `docs/` (README imagery) and `public/`
+  (favicon, og image). Everything else stays in the scratchpad.
 - Stage multi-step screenshots with node-side CDP sequences (see
   tools/cdp-run.mjs SEQUENCE); headless Chrome throttles page timers ~25s,
   so page-side setTimeout staging silently misfires.
