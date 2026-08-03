@@ -28,7 +28,8 @@ import { CLAIM_VALUES } from '../core/claims'
 import type { Bus, Command, Knobs, SimApi, SimState } from '../core/types'
 import { DEFAULT_KNOBS } from '../core/types'
 import { drainWatchers, findPodByName, stepAdmission, stepWatchFanout, submit } from './apiserver'
-import { CONTROLLER_BUDGET, clone, mkDeployment, mkPod, pushEvent, rng01 } from './objects'
+import { CONTROLLER_BUDGET, clone, mkDeployment, mkPod, pushEvent, rng01, templateHash, uidSeqOf } from './objects'
+import type { ReplicaSetObj } from '../core/types'
 import { reconcileDeployment } from './controllers/deployment'
 import { reconcileReplicaSet } from './controllers/replicaset'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
@@ -221,6 +222,58 @@ function runCommand(state: SimState, command: Command): void {
       }
     }
     pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to scale')
+    return
+  }
+
+  if (command.kind === 'SetImage') {
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Deployment' && obj.name === command.deployment) {
+        if (obj.spec.template.image === command.image) {
+          pushEvent(state, 'Normal', 'Unchanged', obj.name, `template already runs ${command.image}`)
+          return
+        }
+        const next = clone(obj)
+        next.spec.template = { ...next.spec.template, image: command.image }
+        // .spec.template changed → generation bumps server-side and a NEW
+        // pod-template-hash exists: this, and only this, is a rollout
+        // (claims: deploy.rolloutTrigger).
+        submit(state, 'update', next, 'kubectl')
+        pushEvent(state, 'Normal', 'ImageUpdated', obj.name, `template image → ${command.image}; renovation will begin`)
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to set image on')
+    return
+  }
+
+  if (command.kind === 'RollbackImage') {
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Deployment' && obj.name === command.deployment) {
+        const currentHash = templateHash(obj.spec.template)
+        let previous: ReplicaSetObj | undefined
+        for (const rs of state.etcd.objects.values()) {
+          if (rs.kind !== 'ReplicaSet' || rs.ownerUid !== obj.uid) continue
+          if (rs.spec.podTemplateHash === currentHash) continue
+          if (!previous || uidSeqOf(rs.uid) > uidSeqOf(previous.uid)) previous = rs
+        }
+        if (!previous) {
+          pushEvent(state, 'Warning', 'NothingToRollBack', obj.name, 'no previous contract to restore')
+          return
+        }
+        const next = clone(obj)
+        next.spec.template = { ...previous.spec.template, requests: { ...previous.spec.template.requests } }
+        submit(state, 'update', next, 'kubectl')
+        pushEvent(
+          state,
+          'Normal',
+          'RolledBack',
+          obj.name,
+          `rollout undo — template restored from contract ${previous.name}; the old contract scales back up`,
+        )
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to roll back')
     return
   }
 

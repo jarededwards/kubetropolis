@@ -6,7 +6,9 @@ import type {
   ApplyDeploymentCommand,
   ApplyPodCommand,
   DeletePodCommand,
+  RollbackImageCommand,
   ScaleCommand,
+  SetImageCommand,
 } from '../core/types'
 
 export const DEMO_IMAGE_V1 = 'harbor.city/shopfront:v1'
@@ -24,5 +26,11 @@ export const samples = {
   },
   deletePod(name: string): DeletePodCommand {
     return { kind: 'DeletePod', name }
+  },
+  setImage(image = DEMO_IMAGE_V2, deployment = 'shopfront'): SetImageCommand {
+    return { kind: 'SetImage', deployment, image }
+  },
+  rollback(deployment = 'shopfront'): RollbackImageCommand {
+    return { kind: 'RollbackImage', deployment }
   },
 } as const

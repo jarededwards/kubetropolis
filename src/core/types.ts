@@ -622,6 +622,18 @@ export interface ScaleCommand {
   replicas: number
 }
 
+export interface SetImageCommand {
+  kind: 'SetImage'
+  deployment: string
+  image: string
+}
+
+/** `kubectl rollout undo` — restore the template from the previous contract. */
+export interface RollbackImageCommand {
+  kind: 'RollbackImage'
+  deployment: string
+}
+
 export interface DeletePodCommand {
   kind: 'DeletePod'
   /** pod name; the newest match wins if a prefix is given */
@@ -632,6 +644,8 @@ export type Command =
   | ApplyPodCommand
   | ApplyDeploymentCommand
   | ScaleCommand
+  | SetImageCommand
+  | RollbackImageCommand
   | DeletePodCommand
 
 /* ---------------------------------------------------------------------------
@@ -695,8 +709,8 @@ export const DEFAULT_KNOBS: Knobs = {
   paused: false,
   reqPerSec: 40,
   reqCpuCostM: 15,
-  maxSurgePct: 25,
-  maxUnavailablePct: 25,
+  maxSurgePct: CLAIM_VALUES.rollingUpdate.surgePct,
+  maxUnavailablePct: CLAIM_VALUES.rollingUpdate.unavailablePct,
   readinessPeriodSec: CLAIM_VALUES.probes.periodSeconds,
   livenessPeriodSec: CLAIM_VALUES.probes.periodSeconds,
   failureThreshold: CLAIM_VALUES.probes.failureThreshold,

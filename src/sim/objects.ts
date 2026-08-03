@@ -145,7 +145,12 @@ export function mkDeployment(
   }
 }
 
-export function mkReplicaSet(state: SimState, dep: DeploymentObj, hash: string): ReplicaSetObj {
+export function mkReplicaSet(
+  state: SimState,
+  dep: DeploymentObj,
+  hash: string,
+  initialReplicas = dep.spec.replicas,
+): ReplicaSetObj {
   return {
     uid: nextUid(state),
     kind: 'ReplicaSet',
@@ -157,7 +162,7 @@ export function mkReplicaSet(state: SimState, dep: DeploymentObj, hash: string):
     ownerUid: dep.uid,
     finalizers: [],
     spec: {
-      replicas: dep.spec.replicas,
+      replicas: initialReplicas,
       podTemplateHash: hash,
       template: { ...dep.spec.template, requests: { ...dep.spec.template.requests } },
     },

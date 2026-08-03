@@ -74,7 +74,16 @@ export const CLAIM_VALUES = {
   },
   imagePull: {
     serialized: true,
+    /** failed pulls ladder like crashes: base doubling to the cap */
+    backoffBaseSeconds: 10,
+    backoffFactor: 2,
     backoffCapSeconds: 300,
+  },
+  rollingUpdate: {
+    /** maxSurge default — rounds UP against desired replicas */
+    surgePct: 25,
+    /** maxUnavailable default — rounds DOWN against desired replicas */
+    unavailablePct: 25,
   },
   restartPolicy: {
     default: 'Always',
@@ -257,6 +266,26 @@ export const CLAIMS: readonly K8sClaim[] = [
     source: `${K8S_DOCS}concepts/containers/images/#imagepullpolicy-defaulting`,
     coverage: 'exact',
     usedBy: ['sim/apiserver'],
+  },
+  {
+    id: 'deploy.rollingDefaults',
+    statement:
+      `A RollingUpdate Deployment defaults to maxSurge ${CLAIM_VALUES.rollingUpdate.surgePct}% `
+      + `(rounded up) and maxUnavailable ${CLAIM_VALUES.rollingUpdate.unavailablePct}% `
+      + '(rounded down) of the desired replica count.',
+    source: `${K8S_DOCS}concepts/workloads/controllers/deployment/#rolling-update-deployment`,
+    coverage: 'exact',
+    values: 'rollingUpdate',
+    usedBy: ['core/types'],
+  },
+  {
+    id: 'deploy.rolloutTrigger',
+    statement:
+      'A rollout happens if and only if .spec.template changes. Scaling a Deployment '
+      + 'does not create a new ReplicaSet or a new revision.',
+    source: `${K8S_DOCS}concepts/workloads/controllers/deployment/#updating-a-deployment`,
+    coverage: 'exact',
+    usedBy: ['sim/controllers/deployment'],
   },
   {
     id: 'images.backoffCap',
