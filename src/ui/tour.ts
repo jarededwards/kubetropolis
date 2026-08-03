@@ -1,4 +1,4 @@
-/* The guided tour — six chapters that teach the reconciliation loop.
+/* The guided tour — ten chapters that teach the reconciliation loop.
  *
  * The runner mirrors the PGSimCity tour contract: knob snapshot on start and
  * restore on end ("the tour hands the city back exactly as it found it" —
