@@ -1,8 +1,9 @@
 # Kubetropolis roadmap
 
-Local epic ledger (no remote by product-owner decision, 2026-08-02; migrate to
-issue tracking if hosting is chosen). Full plan:
-`~/.claude/plans/https-github-com-nikolays-pgsimcity-ref-enumerated-stallman.md`.
+Epic ledger for github.com/jarededwards/kubetropolis (public since
+2026-08-03; milestone branches merge to main via pull request). Architecture,
+milestone detail, and process live in the repo docs: CLAUDE.md, FIDELITY.md,
+VENDORED.md, KNOB-AUDIT.md.
 
 ## Milestones
 
@@ -13,7 +14,7 @@ issue tracking if hosting is chosen). Full plan:
       typecheck + 130/130 tests + build green; legal checklist 1–8 done.
       Known TV artifact: Postgres district tints/labels on the ground come
       from the temporarily-verbatim layout.ts and vanish at M2.
-- [ ] **M1 — The cluster ticks** — deterministic sim core (etcd, apiserver,
+- [x] **M1 — The cluster ticks** *(2026-08-03)* — deterministic sim core (etcd, apiserver,
       scheduler, deployment/replicaset controllers, kubelet lifecycle);
       `KUBETROPOLIS.sim.apply(samplePod)` walks Pending→Running in a debug
       overlay; ~200 tests; determinism deep-equal; claims scaffold live.
@@ -74,3 +75,20 @@ StatefulSets/PV/PVC (anchors reserved) · secondary app entries · analytics.
 ## Naming
 "Kubetropolis" chosen to contain no third-party mark. Fallback candidates if
 ever needed: ClusterCity, KubeCity.
+
+## v1.1 backlog (from the v1 review panel — recorded, not implemented)
+
+- Fidelity A2: Services select pods by ownerRef in the model; real selection
+  is label-based — model labels/selectors when a second workload exists.
+- Fidelity A5: PDB/ResourceQuota status fields (currentHealthy, used/hard)
+  are partial; surface fuller policy status in inspectors.
+- Fidelity A6: client-submitted status on create is accepted rather than
+  wiped; wipe it at admission like the real registry.
+- Fidelity A7: the scheduler reads node imageCache directly (kubelet-local
+  truth); real ImageLocality scores from Node.status.images.
+- Fidelity A9: terminating endpoints fall back to serving when no ready
+  endpoint remains (real proxies' terminating fallback) — not modeled.
+- Fidelity A12: assorted copy/mechanism micro-notes (see the v1 panel report
+  in the PR #3 description).
+- Light bake (tools/bake-indirect.mjs) against final geometry — deferred.
+- Day-theme beam falloff polish if the v1 gradient needs tuning.

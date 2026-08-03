@@ -25,6 +25,8 @@ export const CLAIM_VALUES = {
   appVersion: {
     label: BUILD_LABEL,
   },
+  /** The Kubernetes minor all defaults in this registry were verified against. */
+  k8sVersion: '1.36',
   /** Presentation vocabulary carried over from the vendored engine. */
   modelDuration: {
     shortUnit: 'model s',
@@ -189,8 +191,9 @@ export const CLAIMS: readonly K8sClaim[] = [
     source: `${K8S_DOCS}concepts/workloads/pods/probes/`,
     coverage: 'modeled',
     modelNote:
-      'The readiness half is implemented exactly; the liveness kill path arrives '
-      + 'with chaos wiring at M4 and is listed in FIDELITY.md until then.',
+      'Both halves are implemented: readiness unlists; liveness (via the '
+      + 'chaosLivenessFail dial) kills and restarts on the ladder. Probes have '
+      + 'no timeout in the model.',
     usedBy: ['sim/kubelet'],
   },
   {
@@ -253,7 +256,7 @@ export const CLAIMS: readonly K8sClaim[] = [
     modelNote:
       'After the toleration countdown the model removes the pod row in one NodeLost write; real pods '
       + 'linger Terminating until the Node object goes away. FIDELITY.md discloses the shortcut.',
-    usedBy: ['sim/nodes'],
+    usedBy: ['sim/lifecycle'],
   },
   {
     id: 'pod.restartPolicy',
@@ -290,8 +293,9 @@ export const CLAIMS: readonly K8sClaim[] = [
     source: `${K8S_DOCS}concepts/scheduling-eviction/taint-and-toleration/#taint-based-evictions`,
     coverage: 'modeled',
     modelNote:
-      'The tolerations are stamped exactly (with their NoExecute effect); the '
-      + 'eviction countdown they gate arrives at M8 and FIDELITY.md says so.',
+      'The tolerations are stamped exactly (with their NoExecute effect), and '
+      + 'the countdown they gate shipped at M8: expiry evicts (NodeLost) and '
+      + 'the scheduler rebuilds elsewhere.',
     values: 'tolerations',
     usedBy: ['sim/apiserver'],
   },
@@ -351,7 +355,11 @@ export const CLAIMS: readonly K8sClaim[] = [
       'Omitting imagePullPolicy defaults to Always for :latest or untagged images, and IfNotPresent '
       + 'otherwise — including digest-pinned images.',
     source: `${K8S_DOCS}concepts/containers/images/#imagepullpolicy-defaulting`,
-    coverage: 'exact',
+    coverage: 'modeled',
+    modelNote:
+      'The default is stamped exactly at admission, but the kubelet does not '
+      + 're-pull on container restart even under Always — restarts reuse the '
+      + 'cached image (FIDELITY.md).',
     usedBy: ['sim/apiserver'],
   },
   {
@@ -424,13 +432,28 @@ export const CLAIMS: readonly K8sClaim[] = [
     usedBy: ['sim/etcd'],
   },
   {
+    id: 'slice.conditions',
+    statement:
+      'EndpointSlice endpoints carry serving and terminating conditions; ready means '
+      + 'serving and not terminating, and proxies normally ignore terminating endpoints.',
+    source: `${K8S_DOCS}concepts/services-networking/endpoint-slices/#conditions`,
+    coverage: 'modeled',
+    modelNote:
+      'Conditions are computed and consumed exactly; slices are unbounded in the '
+      + 'model (no 100-endpoint packing) and there is one slice per Service.',
+    usedBy: ['sim/controllers/endpointslice'],
+  },
+  {
     id: 'crd.registration',
     statement:
       'A CustomResourceDefinition registers a new kind with the API server; applying a custom '
       + 'resource whose kind is not registered is rejected ("no matches for kind"). Registration '
       + 'creates storage and validation only — no controller appears with it.',
     source: `${K8S_DOCS}concepts/extend-kubernetes/api-extension/custom-resources/`,
-    coverage: 'exact',
+    coverage: 'modeled',
+    modelNote:
+      'Registration gates admission by kind-match only; the OpenAPI schema in '
+      + 'the shown CRD manifest is not evaluated by the model.',
     values: 'crd',
     usedBy: ['sim/apiserver', 'sim/objects'],
   },
