@@ -8,12 +8,17 @@ export interface BootStep {
 }
 
 export const BOOT_STEPS = {
-  renderer: { pct: 12, label: 'starting the renderer…' },
-  camera: { pct: 26, label: 'placing the camera…' },
-  simulation: { pct: 40, label: 'seeding the cluster ledger…' },
-  ground: { pct: 58, label: 'grading the island…' },
-  sky: { pct: 74, label: 'raising the sky…' },
-  roads: { pct: 88, label: 'painting the roads…' },
+  renderer: { pct: 8, label: 'starting the renderer…' },
+  camera: { pct: 15, label: 'placing the camera…' },
+  simulation: { pct: 22, label: 'seeding the cluster ledger…' },
+  ground: { pct: 32, label: 'grading the island…' },
+  civic: { pct: 44, label: 'raising City Hall…' },
+  nodes: { pct: 56, label: 'commissioning the districts…' },
+  harbor: { pct: 66, label: 'mooring the ship…' },
+  water: { pct: 73, label: 'letting in the sea…' },
+  roads: { pct: 80, label: 'painting the roads…' },
+  sky: { pct: 87, label: 'raising the sky…' },
+  labels: { pct: 94, label: 'hanging the street signs…' },
   firstFrame: { pct: 100, label: 'rendering the first frame…' },
 } as const satisfies Record<string, BootStep>
 

@@ -47,7 +47,7 @@ describe('boot progress', () => {
     const steps = Object.values(BOOT_STEPS)
 
     /* Kubetropolis M0 boot ladder; strictly increasing and ending at 100. */
-    expect(steps.map((step) => step.pct)).toEqual([12, 26, 40, 58, 74, 88, 100])
+    expect(steps.map((step) => step.pct)).toEqual([8, 15, 22, 32, 44, 56, 66, 73, 80, 87, 94, 100])
     for (let i = 1; i < steps.length; i++) {
       expect(steps[i].pct, 'boot progress must be monotonic').toBeGreaterThan(steps[i - 1].pct)
     }

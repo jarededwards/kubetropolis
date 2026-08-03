@@ -1,0 +1,271 @@
+import * as THREE from 'three'
+import { COLOR } from '../core/theme'
+import type { SimState, WorldContext, WorldModule } from '../core/types'
+import { fmtNum } from '../core/util'
+import { ANCHOR, CITY } from './layout'
+
+/* ============================================================================
+ * THE HARBOR — the image registry, and the only place the city goes nautical.
+ *
+ * Images are cargo. They arrive by ship, stand in stacks on the quay, and a
+ * crane loads them onto flatbeds for the pull roads. A district that already
+ * holds a container in its cache never sends a truck — which is the entire
+ * ImageLocality lesson, told with traffic.
+ *
+ * On the breakwater: a bare foundation. The Lighthouse is a law the council
+ * has not passed yet (M7). The operator's shack at the south quay stands dark
+ * until someone staffs it — an operator is just a client, far from City Hall.
+ * ==========================================================================*/
+
+const _t = new THREE.Vector3()
+
+export function createHarbor(ctx: WorldContext): WorldModule {
+  const { theme } = ctx
+  const group = new THREE.Group()
+  group.name = 'world.harbor'
+
+  /* --- quay ---------------------------------------------------------------- */
+  const quay = new THREE.Mesh(theme.box(30, 2.4, 132), theme.mat('ink'))
+  quay.position.set(CITY.harbor.quayX + 8, -0.6, 94)
+  group.add(quay)
+
+  // bollards along the water edge
+  const bollard = theme.cyl(0.5, 0.6, 1.6, 8)
+  const bollards = new THREE.InstancedMesh(bollard, theme.mat('ink'), 9)
+  const bm = new THREE.Matrix4()
+  for (let i = 0; i < 9; i++) {
+    bm.setPosition(CITY.harbor.quayX - 6, 1.2, 34 + i * 15)
+    bollards.setMatrixAt(i, bm)
+  }
+  bollards.instanceMatrix.needsUpdate = true
+  group.add(bollards)
+
+  /* --- registry stacks ------------------------------------------------------ */
+  const rAt = ANCHOR['harbor.registry']
+  const containerGeo = theme.box(6.4, 2.6, 2.6)
+  const STACK = 18
+  const stacks = new THREE.InstancedMesh(containerGeo, theme.mat('harbor'), STACK)
+  stacks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(STACK * 3), 3)
+  const sc = new THREE.Color()
+  const sm = new THREE.Matrix4()
+  for (let i = 0; i < STACK; i++) {
+    const col = i % 3
+    const row = Math.floor(i / 3) % 2
+    const lvl = Math.floor(i / 6)
+    sm.setPosition(rAt[0] + col * 7.2 - 7.2, 1.3 + lvl * 2.7, rAt[2] + row * 3.4 + 6)
+    stacks.setMatrixAt(i, sm)
+    sc.setHex(i % 2 === 0 ? COLOR.harbor : COLOR.backend)
+    stacks.setColorAt(i, sc)
+  }
+  stacks.instanceMatrix.needsUpdate = true
+  if (stacks.instanceColor) stacks.instanceColor.needsUpdate = true
+  group.add(stacks)
+
+  const regSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(16, 2.2),
+    new THREE.MeshBasicMaterial({
+      map: theme.textTexture('harbor.city/shopfront', { size: 44, color: 'harbor' }),
+      transparent: true,
+    }),
+  )
+  regSign.position.set(rAt[0], 9.4, rAt[2] + 7)
+  group.add(regSign)
+
+  /* --- the crane ------------------------------------------------------------ */
+  const cAt = ANCHOR['harbor.crane']
+  const crane = new THREE.Group()
+  crane.name = 'harbor.crane'
+  crane.position.set(cAt[0], 0, cAt[2])
+  group.add(crane)
+
+  const tower = new THREE.Mesh(theme.box(3, 26, 3), theme.mat('harbor'))
+  tower.position.y = 13
+  crane.add(tower)
+  const jib = new THREE.Mesh(theme.box(30, 1.6, 2), theme.mat('harbor'))
+  jib.position.set(-6, 26, 0)
+  crane.add(jib)
+  const counter = new THREE.Mesh(theme.box(5, 3, 3), theme.mat('ink'))
+  counter.position.set(9, 24.5, 0)
+  crane.add(counter)
+  const trolley = new THREE.Mesh(theme.box(2.4, 1.2, 2.4), theme.mat('ink'))
+  trolley.position.set(-14, 25, 0)
+  crane.add(trolley)
+  const cable = new THREE.Mesh(theme.box(0.3, 10, 0.3), theme.mat('ink'))
+  cable.position.set(-14, 19.6, 0)
+  crane.add(cable)
+  const hookBox = new THREE.Mesh(theme.box(6.4, 2.6, 2.6), theme.neon(COLOR.harbor, 0.9))
+  hookBox.position.set(-14, 13.6, 0)
+  crane.add(hookBox)
+
+  /* --- the ship ------------------------------------------------------------- */
+  const shipAt = ANCHOR['harbor.ship']
+  const ship = new THREE.Group()
+  ship.name = 'harbor.ship'
+  ship.position.set(shipAt[0], CITY.harbor.waterY + 1.2, shipAt[2])
+  group.add(ship)
+  const hull = new THREE.Mesh(theme.box(16, 5, 44), theme.mat('ink'))
+  hull.position.y = 2.5
+  ship.add(hull)
+  const bow = new THREE.Mesh(theme.box(10, 4, 8), theme.mat('ink'))
+  bow.position.set(0, 2, -25)
+  ship.add(bow)
+  const bridge = new THREE.Mesh(theme.box(10, 8, 6), theme.mat('harbor'))
+  bridge.position.set(0, 8, 16)
+  ship.add(bridge)
+  const deckGeo = theme.box(4.4, 2.2, 2.2)
+  const deck = new THREE.InstancedMesh(deckGeo, theme.mat('harbor'), 12)
+  const dm = new THREE.Matrix4()
+  const dc = new THREE.Color()
+  deck.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(36), 3)
+  for (let i = 0; i < 12; i++) {
+    dm.setPosition((i % 2) * 5 - 2.5, 6.2 + Math.floor(i / 6) * 2.4, -14 + (Math.floor(i / 2) % 3) * 9)
+    deck.setMatrixAt(i, dm)
+    dc.setHex(i % 3 === 0 ? COLOR.backend : COLOR.harbor)
+    deck.setColorAt(i, dc)
+  }
+  deck.instanceMatrix.needsUpdate = true
+  if (deck.instanceColor) deck.instanceColor.needsUpdate = true
+  ship.add(deck)
+
+  /* --- breakwater + the empty lighthouse foundation ------------------------- */
+  const lAt = ANCHOR['harbor.lighthouse']
+  const spine: [number, number][] = [
+    [-452, -2],
+    [-464, -7],
+    [-476, -11],
+    [-486, -14],
+  ]
+  for (let i = 0; i < spine.length; i++) {
+    const wall = new THREE.Mesh(theme.box(10, 2.6, 7), theme.mat('ink'))
+    wall.position.set(spine[i][0], 1.3, spine[i][1])
+    wall.rotation.y = -0.35
+    group.add(wall)
+  }
+  const foundation = new THREE.Mesh(theme.cyl(4.4, 5, 1.6, 12), theme.mat('ground'))
+  foundation.position.set(lAt[0], 0.8, lAt[2])
+  group.add(foundation)
+
+  /* --- the operator's shack ------------------------------------------------- */
+  const oAt = ANCHOR['operator.shack']
+  const shack = new THREE.Mesh(theme.box(9, 6, 7), theme.mat('ink'))
+  shack.position.set(oAt[0], 3, oAt[2])
+  group.add(shack)
+  const shackLamp = new THREE.Mesh(theme.box(1.2, 1.2, 1.2), theme.neon(COLOR.crd, 1.5))
+  shackLamp.position.set(oAt[0], 7, oAt[2])
+  shackLamp.visible = false
+  group.add(shackLamp)
+
+  /* --- registration --------------------------------------------------------- */
+
+  const anyPull = (s: SimState): { image: string; pct: number } | null => {
+    for (let i = 0; i < s.nodes.length; i++) {
+      const pulls = s.nodes[i].pulls
+      if (pulls.length > 0) {
+        return { image: pulls[0].image, pct: pulls[0].doneMB / Math.max(1, pulls[0].totalMB) }
+      }
+    }
+    return null
+  }
+
+  ctx.register({
+    id: 'harbor.crane',
+    name: 'Registry crane',
+    role: 'image pulls load here — cached districts never send a truck',
+    kind: 'process',
+    district: 'harbor',
+    object: crane,
+    tier: 0,
+    focus: { target: [cAt[0], 14, cAt[2]], distance: 80, dir: [0.72, 0.36, 0.6] },
+    labelAt: [cAt[0], 30, cAt[2]],
+    color: COLOR.harbor,
+    readout: (s: SimState) => {
+      if (!s.harbor.reachable) return 'FOG — registry unreachable'
+      const p = anyPull(s)
+      return p ? `pulling ${p.image} · ${fmtNum(p.pct * 100, 0)}%` : `idle · ${fmtNum(s.harbor.mbps, 0)} MB/s`
+    },
+  })
+
+  ctx.register({
+    id: 'harbor.registry',
+    name: 'Registry stacks',
+    role: 'harbor.city — every image the city can build from',
+    kind: 'storage',
+    district: 'harbor',
+    object: stacks,
+    tier: 1,
+    focus: { target: [rAt[0], 4, rAt[2] + 6], distance: 52, dir: [0.6, 0.42, 0.68] },
+    color: COLOR.harbor,
+    readout: (s: SimState) => `${fmtNum(s.vitals.imagePullsActive, 0)} pulls active`,
+  })
+
+  ctx.register({
+    id: 'harbor.ship',
+    name: 'Container ship',
+    role: 'how images reached the registry in the first place',
+    kind: 'concept',
+    district: 'harbor',
+    object: ship,
+    tier: 2,
+    focus: { target: [shipAt[0], 6, shipAt[2]], distance: 70, dir: [0.8, 0.3, 0.52] },
+    color: COLOR.harbor,
+  })
+
+  ctx.register({
+    id: 'harbor.lighthouse',
+    name: 'Lighthouse foundation',
+    role: 'a permit nobody has filed — the Lighthouse arrives with CRDs (M7)',
+    kind: 'concept',
+    district: 'harbor',
+    object: foundation,
+    tier: 2,
+    focus: { target: [lAt[0], 3, lAt[2]], distance: 42, dir: [0.7, 0.34, 0.62] },
+    color: COLOR.crd,
+  })
+
+  ctx.register({
+    id: 'operator.shack',
+    name: "Operator's shack",
+    role: 'an operator is just a client, far from the control plane',
+    kind: 'process',
+    district: 'harbor',
+    object: shack,
+    tier: 1,
+    focus: { target: [oAt[0], 4, oAt[2]], distance: 40, dir: [0.6, 0.4, 0.7] },
+    color: COLOR.crd,
+    readout: (s: SimState) => (s.operatorRunning ? 'staffed — reconciling' : 'dark. nobody holds this watch'),
+  })
+
+  /* --- update ---------------------------------------------------------------- */
+
+  let craneSwing = 0
+
+  function update(dt: number, s: SimState, t: number): void {
+    const p = anyPull(s)
+    const active = p !== null && s.harbor.reachable
+    if (active) {
+      craneSwing += dt
+      const k = (Math.sin(craneSwing * 1.4) + 1) / 2
+      trolley.position.x = -20 + k * 14
+      cable.position.x = trolley.position.x
+      hookBox.position.x = trolley.position.x
+      const drop = p ? 6 + (1 - p.pct) * 6 : 8
+      cable.scale.y = drop / 10
+      cable.position.y = 25.6 - drop / 2
+      hookBox.position.y = 25.6 - drop
+      hookBox.visible = true
+    } else {
+      hookBox.visible = false
+      trolley.position.x = -14
+      cable.position.set(-14, 19.6, 0)
+      cable.scale.y = 1
+    }
+
+    // gentle ride at anchor
+    ship.position.y = CITY.harbor.waterY + 1.2 + Math.sin(t * 0.5) * 0.35
+    ship.rotation.z = Math.sin(t * 0.4) * 0.012
+
+    shackLamp.visible = s.operatorRunning
+  }
+
+  return { id: 'harbor', group, update }
+}

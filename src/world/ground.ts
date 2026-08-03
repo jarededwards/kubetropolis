@@ -1133,8 +1133,8 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
 
   ctx.register({
     id: 'world.ground',
-    name: 'PGSimCity',
-    role: 'one PostgreSQL cluster',
+    name: 'Kubetropolis',
+    role: 'one Kubernetes cluster',
     kind: 'concept',
     district: 'world',
     object: group,

@@ -31,11 +31,21 @@ import type { ComponentDef, FlowRequest, WorldContext, WorldModule } from './cor
 
 import { createRenderer } from './engine/renderer'
 import { createCameraRig } from './engine/camera'
+import { createCollisionWorld } from './engine/collision'
+import { createFlows } from './engine/flows'
+import { createLabels } from './engine/labels'
+import { createPicker } from './engine/picker'
+import { createRoads } from './engine/roads'
+import { createBufferWater } from './engine/water'
 
 import { createSim, samples } from './sim/model'
 
 import { createGround } from './world/ground'
 import { createSky } from './world/sky'
+import { createControlPlane } from './world/control-plane'
+import { createHarbor } from './world/harbor'
+import { createNodeDistricts } from './world/node-district'
+import { CITY } from './world/layout'
 
 import { BOOT_STEPS, failBoot, finishBoot, presentBootStep } from './ui/boot'
 import { createDebugOverlay } from './ui/debug-overlay'
@@ -107,8 +117,37 @@ async function boot(): Promise<void> {
   }
   add(createGround(ctx))
 
+  await progress(BOOT_STEPS.civic)
+  add(createControlPlane(ctx))
+
+  await progress(BOOT_STEPS.nodes)
+  add(createNodeDistricts(ctx))
+
+  await progress(BOOT_STEPS.harbor)
+  add(createHarbor(ctx))
+
+  await progress(BOOT_STEPS.water)
+  const water = createBufferWater(scene, gfx.quality, { camera })
+  water.group.position.set(
+    (CITY.harbor.sea.x0 + CITY.harbor.sea.x1) / 2,
+    0,
+    (CITY.harbor.sea.z0 + CITY.harbor.sea.z1) / 2,
+  )
+  scene.add(water.group)
+
+  await progress(BOOT_STEPS.roads)
+  scene.add(createRoads(theme))
+
   await progress(BOOT_STEPS.sky)
   scene.add(createSky(theme))
+
+  await progress(BOOT_STEPS.labels)
+  const collision = createCollisionWorld()
+  const labels = createLabels(labelsRoot, registry, bus, collision)
+  scene.add(labels.group)
+  const flows = createFlows(scene, bus, gfx.quality, theme)
+  const picker = createPicker({ dom: gfx.renderer.domElement, camera, registry, bus, theme })
+  scene.add(picker.group)
 
   /* --- bus wiring ---------------------------------------------------------- */
 
@@ -149,6 +188,7 @@ async function boot(): Promise<void> {
   const onResize = () => {
     gfx.resize()
     rig.resize(canvasRoot.clientWidth, canvasRoot.clientHeight)
+    labels.resize(canvasRoot.clientWidth, canvasRoot.clientHeight)
   }
   window.addEventListener('resize', onResize)
   onResize()
@@ -181,9 +221,14 @@ async function boot(): Promise<void> {
 
     // 3. the city
     for (let i = 0; i < modules.length; i++) modules[i].update(cityDt, s, s.now)
+    flows.update(cityDt)
+    water.update(cityDt, false)
+    picker.update(dt)
 
-    // 4. draw + the M1 proof surface
+    // 4. draw + labels + the proof surface
     gfx.render(dt, rawDt)
+    labels.update(dt, camera, s)
+    labels.render(scene, camera)
     overlay.update(s)
   }
 
@@ -202,6 +247,8 @@ async function boot(): Promise<void> {
     running = false
     window.removeEventListener('resize', onResize)
     overlay.dispose()
+    labels.dispose()
+    water.dispose()
     timer.disconnect()
     for (const m of modules) m.dispose?.()
     rig.dispose()
@@ -233,6 +280,7 @@ async function boot(): Promise<void> {
     bus,
     rig,
     gfx,
+    flows,
     setThemeMode,
     setThemeClockMinutes,
     themeAtmosphere: atmosphere,
