@@ -24,10 +24,11 @@
  * no unseeded randomness anywhere under src/sim.
  * ==========================================================================*/
 
+import { CLAIM_VALUES } from '../core/claims'
 import type { Bus, Command, Knobs, SimApi, SimState } from '../core/types'
 import { DEFAULT_KNOBS } from '../core/types'
 import { drainWatchers, findPodByName, stepAdmission, stepWatchFanout, submit } from './apiserver'
-import { CONTROLLER_BUDGET, clone, mkDeployment, mkPod, pushEvent } from './objects'
+import { CONTROLLER_BUDGET, clone, mkDeployment, mkPod, pushEvent, rng01 } from './objects'
 import { reconcileDeployment } from './controllers/deployment'
 import { reconcileReplicaSet } from './controllers/replicaset'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
@@ -90,6 +91,17 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     reconcile: (s2: SimState, uid: string) => void,
   ): void {
     const ctl = s.controllers[id]
+    // B6 companion: the periodic resync re-enqueues every owned key, so a
+    // desk that missed (or leaked) an event always gets another look. Jittered
+    // via the seeded RNG — deterministic, but desks do not thunder together.
+    if (s.now >= ctl.nextResyncAt) {
+      const kind = id === 'deployment' ? 'Deployment' : 'ReplicaSet'
+      for (const o of s.etcd.objects.values()) {
+        if (o.kind === kind && !ctl.workqueue.includes(o.uid)) ctl.workqueue.push(o.uid)
+      }
+      ctl.nextResyncAt =
+        s.now + CLAIM_VALUES.controllerExpectations.resyncSeconds + rng01(s) * 60
+    }
     for (let i = 0; i < CONTROLLER_BUDGET && ctl.workqueue.length > 0; i++) {
       const uid = ctl.workqueue.shift()!
       ctl.current = uid
@@ -167,7 +179,9 @@ function runCommand(state: SimState, command: Command): void {
       if (obj.kind === 'Deployment' && obj.name === command.deployment) {
         const next = clone(obj)
         next.spec.replicas = command.replicas
-        // scaling is not a rollout: the template — and generation — stand still
+        // Scaling bumps generation (any spec change does — the server owns
+        // it), but the template and its hash stand still: no new ReplicaSet,
+        // no rollout revision. Same conclusion, honest mechanism (B2).
         submit(state, 'update', next, 'kubectl')
         pushEvent(state, 'Normal', 'Scaled', obj.name, `desired replicas → ${command.replicas}`)
         return

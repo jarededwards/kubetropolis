@@ -6,6 +6,7 @@
  * one is still crossing the permit hall (the standard controller trick).
  */
 
+import { CLAIM_VALUES } from '../../core/claims'
 import type { PodObj, ReplicaSetObj, SimState, Uid } from '../../core/types'
 import { submit } from '../apiserver'
 import {
@@ -19,6 +20,8 @@ import {
   uidSeqOf,
 } from '../objects'
 
+const EXPECT_TTL = CLAIM_VALUES.controllerExpectations.ttlSeconds
+
 export function reconcileReplicaSet(state: SimState, uid: Uid): void {
   const rs = getReplicaSet(state, uid)
   if (!rs) return
@@ -29,7 +32,16 @@ export function reconcileReplicaSet(state: SimState, uid: Uid): void {
   // Prune expectations against THIS read frame: a pending create settles the
   // moment the child is visible here; a pending delete settles the moment the
   // victim is terminating or gone. One frame — counts can never double.
-  const expect = ctl.expect.get(rs.uid) ?? { creates: [], deletes: [] }
+  // B6: and the whole record EXPIRES on the ExpectationsTimeout — a create
+  // whose pod was hard-deleted before this desk's next read frame must never
+  // stall convergence forever (the failure mode is permanent UNDER-counting).
+  const expect = ctl.expect.get(rs.uid) ?? { creates: [], deletes: [], expiresAt: 0 }
+  if (expect.expiresAt !== 0 && state.now > expect.expiresAt) {
+    expect.creates = []
+    expect.deletes = []
+    expect.expiresAt = 0
+    pushEvent(state, 'Warning', 'ExpectationsExpired', rs.name, 'stale in-flight expectations dropped')
+  }
   expect.creates = expect.creates.filter((podUid) => !state.etcd.objects.has(podUid))
   expect.deletes = expect.deletes.filter((podUid) => {
     const pod = state.etcd.objects.get(podUid)
@@ -40,6 +52,7 @@ export function reconcileReplicaSet(state: SimState, uid: Uid): void {
   if (effective < rs.spec.replicas) {
     const missing = rs.spec.replicas - effective
     const batch = Math.min(missing, RS_CREATE_BATCH)
+    if (batch > 0) expect.expiresAt = state.now + EXPECT_TTL
     for (let i = 0; i < batch; i++) {
       const pod = mkPod(
         state,
@@ -65,6 +78,7 @@ export function reconcileReplicaSet(state: SimState, uid: Uid): void {
       .filter((p) => !expect.deletes.includes(p.uid))
       .sort((a, b) => uidSeqOf(b.uid) - uidSeqOf(a.uid))
       .slice(0, surplus)
+    if (victims.length > 0) expect.expiresAt = state.now + EXPECT_TTL
     for (const v of victims) {
       expect.deletes.push(v.uid)
       submit(state, 'delete', clone(v), 'ctl.replicaset')

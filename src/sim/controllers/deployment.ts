@@ -7,6 +7,7 @@
  * arrives at M4 with `set-image`.
  */
 
+import { CLAIM_VALUES } from '../../core/claims'
 import type { DeploymentObj, ReplicaSetObj, SimState, Uid } from '../../core/types'
 import { submit } from '../apiserver'
 import { clone, getDeployment, mkReplicaSet, pushEvent, templateHash } from '../objects'
@@ -21,11 +22,16 @@ export function reconcileDeployment(state: SimState, uid: Uid): void {
   const current = children.find((rs) => rs.spec.podTemplateHash === hash)
 
   if (!current) {
-    const expect = ctl.expect.get(dep.uid) ?? { creates: [], deletes: [] }
+    const expect = ctl.expect.get(dep.uid) ?? { creates: [], deletes: [], expiresAt: 0 }
+    if (expect.expiresAt !== 0 && state.now > expect.expiresAt) {
+      expect.creates = []
+      expect.expiresAt = 0
+    }
     expect.creates = expect.creates.filter((rsUid) => !state.etcd.objects.has(rsUid))
     if (expect.creates.length === 0) {
       const rs = mkReplicaSet(state, dep, hash)
       expect.creates.push(rs.uid)
+      expect.expiresAt = state.now + CLAIM_VALUES.controllerExpectations.ttlSeconds
       ctl.expect.set(dep.uid, expect)
       submit(state, 'create', rs, 'ctl.deployment')
       pushEvent(state, 'Normal', 'ScalingReplicaSet', dep.name, `opened contract ${rs.name} for ${rs.spec.replicas}`)
@@ -60,11 +66,18 @@ function syncStatus(state: SimState, dep: DeploymentObj, children: ReplicaSetObj
     observed += rs.status.observed
     ready += rs.status.ready
   }
-  if (dep.status.observed !== observed || dep.status.ready !== ready) {
+  if (
+    dep.status.observed !== observed
+    || dep.status.ready !== ready
+    || dep.status.observedGeneration !== dep.generation
+  ) {
     const next = clone(dep)
     next.status.observed = observed
     next.status.ready = ready
     next.status.updated = observed
+    // "Has the controller seen my change" — the desk stamps the generation it
+    // just processed. The M3 trace narrates this catching up.
+    next.status.observedGeneration = dep.generation
     submit(state, 'updateStatus', next, 'ctl.deployment')
   }
 }
