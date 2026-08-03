@@ -21,7 +21,7 @@ export function createActionPicker(ctx: UiContext): UiModule {
       el(
         'button',
         {
-          class: 'pg-panel trace-picker__choice',
+          class: 'trace-picker__choice',
           on: {
             click: () => {
               hide()

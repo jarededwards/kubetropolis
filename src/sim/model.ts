@@ -128,6 +128,11 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     },
     update(dt: number): void {
       if (dt <= 0) return
+      // A step-mode trace pauses the world MID-BATCH: the timebase checked
+      // knobs.paused before this frame's fixed steps were counted, so any
+      // remaining bites of the same frame must be refused here or a paused
+      // stop would be silently skipped.
+      if (state.knobs.paused) return
       tick(dt)
     },
     apply(command: Command): void {

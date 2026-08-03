@@ -40,7 +40,7 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
     body: () =>
       'Every default you did not write is stamped in ink you can read: probe timings, eviction tolerances, a demolition notice period. Nothing is executed here — your intention is only completed.',
     line: (t) =>
-      `${t.mutations.length} defaults stamped · probes every ${P.periodSeconds}${UNIT} ×${P.failureThreshold} · tolerations ${TOL.defaultSeconds}${UNIT} · grace ${GRACE.defaultGraceSeconds}${UNIT}`,
+      `${t.mutations.length} defaults stamped · probes every ${P.periodSeconds} ${UNIT} ×${P.failureThreshold} · tolerations ${TOL.defaultSeconds} ${UNIT} · grace ${GRACE.defaultGraceSeconds} ${UNIT}`,
   },
   etcd_commit: {
     title: 'The cluster is a ledger',
@@ -107,14 +107,14 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
     line: (t) =>
       t.pullSkipped
         ? 'image cached · 0 MB pulled'
-        : `${t.pullDoneMB.toFixed(0)}/${t.pullTotalMB.toFixed(0)} MB · layers cached ${t.layersHit}/${t.layersTotal} · waited ${t.pullWaitSec.toFixed(1)}${UNIT}`,
+        : `${t.pullDoneMB.toFixed(0)}/${t.pullTotalMB.toFixed(0)} MB · layers cached ${t.layersHit}/${t.layersTotal} · waited ${t.pullWaitSec.toFixed(1)} ${UNIT}`,
   },
   start_probes: {
     title: 'Running is not ready',
     body: () =>
       `The doors are on and the lights work. Now an inspector visits every ${P.periodSeconds} ${CLAIM_VALUES.modelDuration.prose} seconds — and until a visit passes, no directory anywhere will list this building.`,
     line: (t) =>
-      `restarts ${t.restarts} · readiness passes ${t.readyOks} · next visit in ${t.nextProbeInSec.toFixed(1)}${UNIT}`,
+      `restarts ${t.restarts} · readiness passes ${t.readyOks} · next visit in ${t.nextProbeInSec.toFixed(1)} ${UNIT}`,
   },
   endpoints: {
     title: 'Listed — or unlisted',
@@ -129,16 +129,16 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
     body: (t) =>
       `Your manifest became ${t.trips} trips through the permit hall and ${t.eventsSince} lines in the newspaper. Nothing spoke to anything directly. That is the entire trick, and the rest of Kubernetes is special cases of it.`,
     line: (t) =>
-      `trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)}${UNIT} · events ${t.eventsSince}`,
+      `trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)} ${UNIT} · events ${t.eventsSince}`,
     hint: 'Try the Deployment next — one paper that becomes four.',
   },
 }
 
-/** Where the camera goes at each stop. */
+/** Where the camera goes at each stop (registered component ids only). */
 export function traceFocusId(stop: TraceStop, t: TraceRecord): string {
   const letter = letterOf(t.chosen)
   switch (stop) {
-    case 'client': return 'client.terminal'
+    case 'client': return 'overview.balloon' // the establishing shot: one client, whole city
     case 'admission': return 'cityhall.permitdesk'
     case 'etcd_commit': return 'records.vault'
     case 'watch_fanout': return 'cityhall.watchboard'
@@ -148,9 +148,11 @@ export function traceFocusId(stop: TraceStop, t: TraceRecord): string {
     case 'filter_score': return 'zoning.maptable'
     case 'bind': return 'records.vault'
     case 'kubelet_sees': return letter ? `node.${letter}.foreman` : 'zoning.office'
-    case 'image_pull': return t.pullSkipped && letter ? `node.${letter}.signage` : 'harbor.crane'
-    case 'start_probes': return t.chosen ?? 'overview.balloon'
-    case 'endpoints': return 'service.directory'
+    case 'image_pull': return t.pullSkipped && letter ? `node.${letter}.foreman` : 'harbor.crane'
+    case 'start_probes': return letter ? `node.${letter}.watertower` : 'overview.balloon'
+    // no Service exists at M3 — pull back: nothing anywhere routes here.
+    // (service.directory becomes a component at M6 and takes this stop over.)
+    case 'endpoints': return t.serviceListed ? 'cityhall.watchboard' : 'overview.balloon'
     case 'done': return 'overview.balloon'
   }
 }
