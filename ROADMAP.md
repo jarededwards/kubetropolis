@@ -6,8 +6,8 @@ issue tracking if hosting is chosen). Full plan:
 
 ## Milestones
 
-- [x] **M0 — Scaffold + vendor + first light** *(2026-08-02, awaiting PO
-      sign-off on feat/m0-scaffold-vendor)* — vendored engine at 6d2c854;
+- [x] **M0 — Scaffold + vendor + first light** *(completed 2026-08-02, PO
+      signed off 2026-08-03)* — vendored engine at 6d2c854;
       identity/legal files; island plate + sky render at `vite preview`;
       shoot.mjs screenshot clean (zero exceptions, probe healthy);
       typecheck + 130/130 tests + build green; legal checklist 1–8 done.
