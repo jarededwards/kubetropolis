@@ -29,6 +29,16 @@ export function createHarbor(ctx: WorldContext): WorldModule {
   quay.position.set(CITY.harbor.quayX + 8, -0.6, 94)
   group.add(quay)
 
+  // M8 art pass: a flat animated water band along the quay edge - the sea
+  // must READ at low quality even when the Reflector barely does.
+  const bandMat = new THREE.MeshBasicMaterial({ color: 0x2a7fb8, transparent: true, opacity: 0.5 })
+  bandMat.toneMapped = false
+  const band = new THREE.Mesh(new THREE.PlaneGeometry(20, 300), bandMat)
+  band.rotation.x = -Math.PI / 2
+  band.position.set(CITY.harbor.quayX - 18, CITY.harbor.waterY + 0.25, 96)
+  band.raycast = () => {}
+  group.add(band)
+
   // bollards along the water edge
   const bollard = theme.cyl(0.5, 0.6, 1.6, 8)
   const bollards = new THREE.InstancedMesh(bollard, theme.mat('ink'), 9)

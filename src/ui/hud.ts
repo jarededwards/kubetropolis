@@ -63,7 +63,16 @@ export function createHud(ctx: UiContext): UiModule {
     'div',
     {
       class: 'hud-bar',
-      style: { display: 'flex', gap: '14px', alignItems: 'center', padding: '8px 14px' },
+      style: {
+        display: 'flex',
+        gap: '14px',
+        alignItems: 'center',
+        padding: '8px 14px',
+        flexWrap: 'nowrap',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        minWidth: '0',
+      },
     },
     el('span', { class: 'hud-brand', text: 'Kubetropolis' }),
     el('span', { class: 'hud-sep' }),
@@ -72,7 +81,7 @@ export function createHud(ctx: UiContext): UiModule {
     nodes,
     el(
       'span',
-      { class: 'hud-right', style: { display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' } },
+      { class: 'hud-right', style: { display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto', flexShrink: '0' } },
       fps,
       runBtn,
       scenarioBtn,

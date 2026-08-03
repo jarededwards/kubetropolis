@@ -958,7 +958,7 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
   }
 
   /** Flat wayfinding label. `along` 0 = text runs east–west, 1 = north–south. */
-  function addDecal(text: string, color: number, cx: number, cy: number, cz: number, along: 0 | 1, avail: number) {
+  function addDecal(text: string, color: number, cx: number, cy: number, cz: number, along: 0 | 1, avail: number, flip = false) {
     // Monospace tracking done with real spaces: theme.textTexture() measures the
     // string it is given, so CSS letter-spacing would overflow the canvas.
     const label = text.length <= 8 ? text.split('').join(' ') : text
@@ -983,7 +983,7 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
     mats.push(m)
     const mesh = new THREE.Mesh(unitPlane, m)
     mesh.scale.set(w, h, 1)
-    mesh.rotation.set(-Math.PI / 2, 0, along === 0 ? 0 : -Math.PI / 2)
+    mesh.rotation.set(-Math.PI / 2, 0, (along === 0 ? 0 : -Math.PI / 2) + (flip ? Math.PI : 0))
     mesh.position.set(cx, cy, cz)
     mesh.renderOrder = 3
     mesh.raycast = () => {}
@@ -1052,7 +1052,10 @@ export const createGround: WorldFactory = (ctx: WorldContext): WorldModule => {
     group.add(kerbMesh)
 
     const along: 0 | 1 = w >= d ? 0 : 1
-    addDecal(spec.label, spec.color, cx, PLINTH_H + 0.05, cz, along, along === 0 ? w : d)
+    // The harbor is viewed from the city side (east, looking west) - flip its
+    // ground label so it reads instead of mirrors (M8 art pass).
+    const flip = spec.district === 'harbor'
+    addDecal(spec.label, spec.color, cx, PLINTH_H + 0.05, cz, along, along === 0 ? w : d, flip)
   }
 
   /* ---------------------------------------------------------------------
