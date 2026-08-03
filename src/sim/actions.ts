@@ -9,8 +9,19 @@
  * its mechanics (M4/M6/M7/M8) — an action is listed only when it is wired.
  */
 
-import type { ActionKind, Command } from '../core/types'
-import { DEMO_IMAGE_V1, samples } from './samples'
+import type { ActionKind, Command, PodObj, SimState } from '../core/types'
+import { DEMO_IMAGE_V1, DEMO_IMAGE_V2, samples } from './samples'
+
+/** Deterministic victim: the first shopfront pod by name. */
+export function firstShopfrontPod(state: SimState): PodObj | undefined {
+  let victim: PodObj | undefined
+  for (const o of state.etcd.objects.values()) {
+    if (o.kind !== 'Pod' || o.deletionTimestamp) continue
+    if (!o.name.startsWith('shopfront-')) continue
+    if (!victim || o.name < victim.name) victim = o
+  }
+  return victim
+}
 
 export interface ActionDef {
   kind: ActionKind
@@ -24,7 +35,9 @@ export interface ActionDef {
   /** the primary object name the trace follows */
   subject: string
   traceable: boolean
-  mkCommand(): Command
+  mkCommand(state?: SimState): Command
+  /** dynamic kubectl line (e.g. a live victim name); falls back to cmd */
+  cmdFor?(state: SimState): string
 }
 
 const POD_YAML = `apiVersion: v1
@@ -82,6 +95,43 @@ const CATALOG: ActionDef[] = [
     subject: 'shopfront',
     traceable: true,
     mkCommand: () => samples.deployment(3, 'shopfront'),
+  },
+  {
+    kind: 'scale-6',
+    label: 'Scale to 6',
+    cmd: 'kubectl scale deployment/shopfront --replicas=6',
+    watch:
+      'Three new buildings and zero renovations — scaling edits the contract, not the template.',
+    subject: 'shopfront',
+    traceable: false,
+    mkCommand: () => samples.scale(6),
+  },
+  {
+    kind: 'set-image-v2',
+    label: 'Ship v2',
+    cmd: `kubectl set image deployment/shopfront app=${DEMO_IMAGE_V2}`,
+    watch:
+      'A second contract opens for v2 and the wave begins — no v1 door closes until a v2 door is Ready.',
+    subject: 'shopfront',
+    traceable: false,
+    mkCommand: () => samples.setImage(DEMO_IMAGE_V2),
+  },
+  {
+    kind: 'delete-pod',
+    label: 'Delete a pod',
+    cmd: 'kubectl delete pod shopfront-…',
+    watch:
+      'The demolition notice and the replacement permit race — the ReplicaSet desk never mourns.',
+    subject: 'shopfront',
+    traceable: false,
+    mkCommand: (state) => {
+      const victim = state ? firstShopfrontPod(state) : undefined
+      return samples.deletePod(victim?.name ?? 'shopfront-')
+    },
+    cmdFor: (state) => {
+      const victim = firstShopfrontPod(state)
+      return `kubectl delete pod ${victim?.name ?? 'shopfront-…'}`
+    },
   },
 ]
 

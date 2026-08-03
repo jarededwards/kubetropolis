@@ -39,6 +39,7 @@ import { stepScheduler } from './scheduler'
 import { DEFAULT_SEED, initState } from './state'
 import { toSnapshot } from './snapshot'
 import { actionFor } from './actions'
+import { applyScenarioChoice, endScenario, startScenario, stepScenario } from './scenarios'
 import { armTrace, endTrace, resumeTraceStep, setTracePlayback, updateTrace } from './trace'
 import { derive } from './vitals'
 
@@ -55,7 +56,8 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
   const intake: Command[] = []
 
   function tick(dt: number): void {
-    // 1 — intake
+    // 1 — intake (the scenario engine files its paperwork like any client)
+    stepScenario(state, (cmd) => runCommand(state, cmd))
     while (intake.length > 0) runCommand(state, intake.shift()!)
 
     // 2..4 — the permit hall and the vault
@@ -159,6 +161,15 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     endTrace() {
       endTrace(state)
     },
+    startScenario(id) {
+      startScenario(state, id)
+    },
+    endScenario() {
+      endScenario(state)
+    },
+    scenarioChoice(choiceId) {
+      applyScenarioChoice(state, choiceId, (cmd) => intake.push(cmd))
+    },
     toSnapshot() {
       return toSnapshot(state)
     },
@@ -243,6 +254,21 @@ function runCommand(state: SimState, command: Command): void {
       }
     }
     pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to set image on')
+    return
+  }
+
+  if (command.kind === 'SetLimit') {
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Deployment' && obj.name === command.deployment) {
+        const next = clone(obj)
+        next.spec.template = { ...next.spec.template, limitMemMi: command.limitMemMi }
+        // Resources live in the template: raising a limit IS a rollout.
+        submit(state, 'update', next, 'kubectl')
+        pushEvent(state, 'Normal', 'LimitRaised', obj.name, `template memory limit → ${command.limitMemMi}Mi; the wave rebuilds`)
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to set limits on')
     return
   }
 

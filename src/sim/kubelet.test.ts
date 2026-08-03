@@ -89,14 +89,12 @@ describe('kubelet — the foreman', () => {
   })
 
   it('OOM is arithmetic: exit 137, lastExitReason OOMKilled, waiting reason CrashLoopBackOff', () => {
-    const sim = mkSim({ nodeCount: 1 })
-    sim.apply(samples.pod('leaky'))
+    // The honest path (M4): the leaky v2 image grows its working set until
+    // the kernel — not Kubernetes — pulls the breaker.
+    const sim = mkSim({ nodeCount: 1, chaosOomLeak: true })
+    sim.apply({ kind: 'ApplyPod', name: 'leaky', image: 'harbor.city/shopfront:v2' })
     stepUntil(sim, (s) => podNamed(s, 'leaky')?.status.phase === 'Running', 900, 'running')
-    // The kernel's view: working set crosses the limit (direct state surgery —
-    // the leak mechanism itself arrives with the M4 oomkill scenario).
-    const pod = podNamed(sim.state, 'leaky')! as PodObj
-    pod.status.container.memMi = pod.spec.limitMemMi + 1
-    stepUntil(sim, (s) => podNamed(s, 'leaky')?.status.container.exitCode === 137, 600, 'OOM kill')
+    stepUntil(sim, (s) => podNamed(s, 'leaky')?.status.container.exitCode === 137, 3000, 'OOM kill')
     // The kubectl flicker (fidelity A6): WHY the last run died is OOMKilled;
     // WHAT the container is doing now is CrashLoopBackOff.
     const c = podNamed(sim.state, 'leaky')!.status.container

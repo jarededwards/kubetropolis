@@ -35,6 +35,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
     uidSeq: 0,
     knobs,
     scenario: null,
+    scenarioRun: null,
     etcd: {
       revision: 0,
       compactedRevision: 0,

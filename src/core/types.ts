@@ -640,6 +640,13 @@ export interface RollbackImageCommand {
   deployment: string
 }
 
+/** Raise the template memory limit — a template change, therefore a rollout. */
+export interface SetLimitCommand {
+  kind: 'SetLimit'
+  deployment: string
+  limitMemMi: number
+}
+
 export interface DeletePodCommand {
   kind: 'DeletePod'
   /** pod name; the newest match wins if a prefix is given */
@@ -652,6 +659,7 @@ export type Command =
   | ScaleCommand
   | SetImageCommand
   | RollbackImageCommand
+  | SetLimitCommand
   | DeletePodCommand
 
 /* ---------------------------------------------------------------------------
@@ -766,6 +774,7 @@ export interface SimState {
   uidSeq: number
   knobs: Knobs
   scenario: string | null
+  scenarioRun: ScenarioRunState | null
   etcd: EtcdState
   api: ApiServerState
   sched: SchedulerState
@@ -817,6 +826,9 @@ export interface SimApi {
   /** Close the trace and hand every knob back exactly as it was found. */
   endTrace(): void
   /** deterministic, JSON-stable snapshot for tests and save/restore */
+  startScenario(id: string): void
+  endScenario(): void
+  scenarioChoice(choiceId: string): void
   toSnapshot(): unknown
   reset(seed?: number): void
 }
@@ -877,6 +889,7 @@ export interface BusEvents {
   'tour:start': { chapter?: number; source?: 'button' | 'keyboard' }
   'tour:stop': Record<string, never>
   'tour:chapter': { index: number; total: number; title: string }
+  'scenario:open': { source?: 'button' | 'keyboard' }
   'trace:open': { source?: 'button' | 'keyboard' }
   'trace:run': { statement: ActionKind; playback: TracePlayback }
   'panel:open': { panel: 'console' | 'inspector' | 'help'; item?: string }
@@ -1279,19 +1292,47 @@ export interface ScenarioDef {
   focus?: string
   /** scenario seconds at 1×; 0 = runs until cancelled */
   duration: number
-  /** optional canned action fired on entry */
-  action?: { kind: ActionKind }
+  /** guarantee the demo Deployment exists before the story starts */
+  ensureDeployment?: boolean
+  /** canned actions fired on schedule — the scenario acts ON CAMERA */
+  actionAt?: [number, ActionKind][]
+  /** scheduled knob changes (the PG at-beat analog): [atSecond, knobs] */
+  knobsAt?: [number, Partial<Knobs>][]
   /** narration beats: [atSecond, title, body] */
   beats?: [number, string, string][]
   /** A non-modal operator decision shown only after its instrument threshold. */
   decision?: {
     revealAt: number
-    choices: {
-      id: ScenarioChoiceId
-      label: string
-      hint: string
-    }[]
+    choices: ScenarioChoice[]
   }
+}
+
+export interface ScenarioChoice {
+  id: ScenarioChoiceId
+  label: string
+  hint: string
+  /** declarative consequence — knobs and/or one command, plus the narrated line */
+  effect: {
+    knobs?: Partial<Knobs>
+    command?: Command
+    consequence: string
+  }
+}
+
+/** Live progress of the running scenario (snapshot-safe: data only). */
+export interface ScenarioRunState {
+  id: string
+  startedAt: number
+  knobsBefore: Knobs
+  setupDone: boolean
+  actionIdx: number
+  knobIdx: number
+  beatIdx: number
+  beat?: { title: string; body: string; at: number }
+  decisionAvailable: boolean
+  choiceTaken?: string
+  consequence?: string
+  endsAt?: number
 }
 
 /* ===========================================================================

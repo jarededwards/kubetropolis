@@ -15,6 +15,15 @@ export function toSnapshot(state: SimState): unknown {
     uidSeq: state.uidSeq,
     knobs: { ...state.knobs },
     scenario: state.scenario,
+    scenarioRun: state.scenarioRun
+      ? {
+          ...state.scenarioRun,
+          startedAt: round6(state.scenarioRun.startedAt),
+          knobsBefore: { ...state.scenarioRun.knobsBefore },
+          beat: state.scenarioRun.beat ? { ...state.scenarioRun.beat } : undefined,
+          endsAt: state.scenarioRun.endsAt === undefined ? undefined : round6(state.scenarioRun.endsAt),
+        }
+      : null,
     etcd: {
       revision: state.etcd.revision,
       compactedRevision: state.etcd.compactedRevision,
