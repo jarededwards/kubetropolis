@@ -106,6 +106,26 @@ export function createControlPlane(ctx: WorldContext): WorldModule {
     hall.add(door)
   }
 
+  // The new counter window (M7): when the council registers a CRD, City Hall
+  // gains one lit window on the east wall — permits of the new kind are now
+  // accepted at the desk. A law is not a building; it is one more window.
+  const counterWindow = new THREE.Mesh(theme.box(0.8, 5, 4.2), theme.neon(COLOR.crd, 1.2))
+  counterWindow.position.set(H.x + H.w / 2 + 0.1, 5.5, H.z - H.d / 4)
+  counterWindow.visible = false
+  hall.add(counterWindow)
+  const counterSignTex = theme.textTexture('LIGHTHOUSE PERMITS', { size: 40, color: 'crd' })
+  const counterSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(10, 1.8),
+    new THREE.MeshBasicMaterial({ map: counterSignTex, transparent: true }),
+  )
+  counterSign.rotation.y = Math.PI / 2
+  counterSign.position.set(H.x + H.w / 2 + 0.7, 9.6, H.z - H.d / 4)
+  counterSign.visible = false
+  counterSign.raycast = () => {}
+  hall.add(counterSign)
+  own(counterSign.geometry)
+  own(counterSign.material as THREE.Material)
+
   // the four counters, engraved over the north approach so the apply street
   // reads them in order on the way in
   const counters = ['AUTHN', 'MUTATE', 'QUOTA', 'VALIDATE']
@@ -458,6 +478,10 @@ export function createControlPlane(ctx: WorldContext): WorldModule {
   let boardPulse = 0
 
   function update(dt: number, s: SimState, _t: number): void {
+    // the new counter window opens when a CRD is registered (M7)
+    counterWindow.visible = s.vitals.crdRegistered
+    counterSign.visible = s.vitals.crdRegistered
+
     // watch board: one row per subscriber, lit tiles = courier lag (capped)
     for (let r = 0; r < BOARD_ROWS; r++) {
       const sub = BOARD_SUBSCRIBERS[r]
