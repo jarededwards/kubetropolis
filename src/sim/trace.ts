@@ -101,6 +101,14 @@ export function armTrace(
     misroutedSince: 0,
     misroutedAtStart: state.traffic.misrouted,
     suggestedPreStopSec: 0,
+    rejectedError: '',
+    crdMatched: false,
+    operatorStaffed: state.operatorRunning,
+    operatorReconciles: 0,
+    operatorReconcilesAtStart: state.controllers.lighthouse.reconciles,
+    beaconBuilt: false,
+    beaconLit: false,
+    beaconFuelPct: 0,
   }
 
   if (action === 'delete-pod') {
@@ -175,6 +183,19 @@ export function updateTrace(state: SimState): void {
   scanLog(state, t)
   refreshLive(state, t)
 
+  // Admission refused the subject: the rail goes straight to the receipt,
+  // which renders the real error. The skipped stages stay unlit — honestly.
+  if (t.rejectedError !== '' && t.stop !== 'done') {
+    t.stop = 'done'
+    t.visited |= traceStopBit('done')
+    t.stopAt = state.now
+    if (t.playback === 'step') {
+      state.knobs.paused = true
+      t.autoPaused = true
+    }
+    return
+  }
+
   let guard = 0
   while (guard++ < 20) {
     const next = nextStopOf(t)
@@ -204,7 +225,14 @@ function nextStopOf(t: TraceRecord): TraceStop | null {
 
 function scanLog(state: SimState, t: TraceRecord): void {
   const deleteRail = t.action === 'delete-pod'
-  const primaryKind = t.action === 'apply-deployment' ? 'Deployment' : 'Pod'
+  const primaryKind =
+    t.action === 'apply-deployment'
+      ? 'Deployment'
+      : t.action === 'apply-crd'
+        ? 'CustomResourceDefinition'
+        : t.action === 'apply-lighthouse'
+          ? 'Lighthouse'
+          : 'Pod'
   for (const rec of state.etcd.log) {
     if (rec.rev <= t.scannedRev) continue
     t.scannedRev = rec.rev
@@ -218,10 +246,11 @@ function scanLog(state: SimState, t: TraceRecord): void {
         if (primaryKind === 'Pod') {
           t.podUid = rec.uid
           t.podName = obj.name
-        } else {
+        } else if (primaryKind === 'Deployment') {
           t.deploymentUid = rec.uid
           t.desiredReplicas = (obj as { spec: { replicas?: number } }).spec.replicas ?? 1
         }
+        // CRD/Lighthouse rails: the subject uid alone carries the family.
       }
     }
 
@@ -353,6 +382,20 @@ function refreshLive(state: SimState, t: TraceRecord): void {
   let since = 0
   for (const e of state.events) if (e.at >= t.startedAt) since += 1
   t.eventsSince = since
+
+  // -- CRD rails (M7): the shack, the street, and the gap between them --
+  if (t.action === 'apply-crd' || t.action === 'apply-lighthouse') {
+    t.crdMatched = hasCrd(state)
+    t.operatorStaffed = state.operatorRunning
+    t.operatorReconciles = Math.max(
+      0,
+      state.controllers.lighthouse.reconciles - t.operatorReconcilesAtStart,
+    )
+    const beacon = state.beacon
+    t.beaconBuilt = beacon?.built ?? false
+    t.beaconLit = beacon?.lit ?? false
+    t.beaconFuelPct = beacon ? Math.round(beacon.fuelPct) : 0
+  }
 
   // -- delete rail live evidence (runs to the end of the rail, pod or no pod) --
   if (t.action === 'delete-pod') {
@@ -509,8 +552,30 @@ function conditionMet(state: SimState, t: TraceRecord, next: TraceStop): boolean
       // A bare pod has no owner: nothing files a replacement (copy variant).
       return t.replicaSetUid === undefined ? t.removed : t.replacementName !== ''
 
+    /* -- CRD rails (M7) -- */
+    case 'operator':
+      // The couriers have gone out; the question of the whole rail — does
+      // anyone hold this watch? — is now askable. The stop then HOLDS until
+      // ignition (see 'beacon'): unstaffed, it holds forever, which is true.
+      return t.commitRev > 0 && (t.watchersNotified >= t.watchersTotal || state.now - t.stopAt >= 2)
+    case 'beacon':
+      return t.beaconLit
+
     case 'done':
       if (deleteRail) return t.removed && state.now - t.stopAt >= DONE_BEAT_SECONDS
+      if (t.action === 'apply-crd') {
+        return t.stop === 'watch_fanout' && state.now - t.stopAt >= DONE_BEAT_SECONDS
+      }
+      if (t.action === 'apply-lighthouse') {
+        return t.stop === 'beacon' && state.now - t.stopAt >= DONE_BEAT_SECONDS
+      }
       return t.stop === 'endpoints' && state.now - t.stopAt >= DONE_BEAT_SECONDS
   }
+}
+
+function hasCrd(state: SimState): boolean {
+  for (const o of state.etcd.objects.values()) {
+    if (o.kind === 'CustomResourceDefinition') return true
+  }
+  return false
 }

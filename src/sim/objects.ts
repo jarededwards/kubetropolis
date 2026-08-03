@@ -6,10 +6,12 @@
 
 import { CLAIM_VALUES } from '../core/claims'
 import type {
+  CustomResourceDefinitionObj,
   DeploymentObj,
   EndpointSliceObj,
   K8sObject,
   LeaseObj,
+  LighthouseObj,
   NodeObj,
   PodObj,
   ReplicaSetObj,
@@ -283,6 +285,54 @@ export function mkEndpointSlice(state: SimState, svc: ServiceObj): EndpointSlice
 /** The single demo Service (M6 models one service + one slice). */
 export function getService(state: SimState): ServiceObj | undefined {
   for (const o of state.etcd.objects.values()) if (o.kind === 'Service') return o
+  return undefined
+}
+
+/* ---------------------------------------------------------------------------
+ * CRDs and the Lighthouse (M7).
+ * -------------------------------------------------------------------------*/
+
+const CRD = CLAIM_VALUES.crd
+
+export function mkCrd(state: SimState): CustomResourceDefinitionObj {
+  return {
+    uid: nextUid(state),
+    kind: 'CustomResourceDefinition',
+    name: `${CRD.plural}.${CRD.group}`,
+    namespace: 'cluster',
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: { group: CRD.group, names: { kind: CRD.kind, plural: CRD.plural } },
+    status: { accepted: true },
+  }
+}
+
+export function mkLighthouse(state: SimState, name: string, beamRpm: number): LighthouseObj {
+  return {
+    uid: nextUid(state),
+    kind: 'Lighthouse',
+    name,
+    namespace: DEFAULT_NAMESPACE,
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: { beamRpm, rangeM: 900 },
+    status: { lit: false, fuelPct: 100 },
+  }
+}
+
+export function getCrd(state: SimState): CustomResourceDefinitionObj | undefined {
+  for (const o of state.etcd.objects.values()) {
+    if (o.kind === 'CustomResourceDefinition') return o
+  }
+  return undefined
+}
+
+export function getLighthouse(state: SimState): LighthouseObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'Lighthouse') return o
   return undefined
 }
 

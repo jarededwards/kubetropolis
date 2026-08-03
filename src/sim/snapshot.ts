@@ -110,6 +110,15 @@ export function toSnapshot(state: SimState): unknown {
     harbor: { ...state.harbor },
     traffic: { ...state.traffic, accumulator: round6(state.traffic.accumulator) },
     operatorRunning: state.operatorRunning,
+    beacon: state.beacon
+      ? {
+          ...state.beacon,
+          buildingUntil: round6(state.beacon.buildingUntil),
+          fuelPct: round6(state.beacon.fuelPct),
+          refuelArriveAt:
+            state.beacon.refuelArriveAt === undefined ? null : round6(state.beacon.refuelArriveAt),
+        }
+      : null,
     podOwners: [...state.podOwners.entries()].sort(([a], [b]) => (a < b ? -1 : 1)),
     events: state.events.map((e) => ({ ...e, at: round6(e.at) })),
     trace: state.trace,

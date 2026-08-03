@@ -179,6 +179,26 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
         ? `replacement ${t.replacementName || '…'} filed · trips ${t.trips}`
         : 'no owner · no replacement',
   },
+
+  /* -- CRD rails (M7). A law with no inspector is paper. -- */
+  operator: {
+    title: 'Somebody must hold this watch',
+    body: (t) =>
+      t.operatorStaffed
+        ? 'The shack is staffed. Its courier walks the longest road in the city — an operator is an ordinary client, far from the control plane, reading the same ledger as every desk and filing the same paperwork back.'
+        : 'Nothing happens. The row exists, revisioned and real — and no office holds this watch. Built-in kinds come with inspectors; a custom kind is reconciled only while someone runs its operator.',
+    line: (t) =>
+      t.operatorStaffed
+        ? `shack staffed · reconciles ${t.operatorReconciles} · ${t.beaconBuilt ? 'tower standing' : 'construction filed'}`
+        : 'shack dark · reconciles 0 · the row waits',
+    hint: 'The stop holds here until the beacon lights. Staffing the shack is the fix.',
+  },
+  beacon: {
+    title: 'Reconciliation is an occupation',
+    body: () =>
+      'The tower stands and the beam sweeps. Fuel drains from this moment on, and only the shack corrects it — refuel runs leave the docks whenever the watch notices the gauge. Unstaff the operator and the breakwater goes dark again.',
+    line: (t) => `lit · fuel ${t.beaconFuelPct}% · reconciles ${t.operatorReconciles}`,
+  },
 }
 
 /** Delete-rail overrides for the stops the rails share. */
@@ -216,10 +236,83 @@ const DELETE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
   },
 }
 
-/** Rail-aware copy: the delete rail overrides the stops the rails share. */
+/** CRD-rail overrides: the same hall, a different kind of paper. */
+const CRD_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
+  client: {
+    title: 'You are proposing a law',
+    body: () =>
+      'This manifest defines no building. It teaches City Hall a new FORM — a kind called Lighthouse — that permits may cite from now on. kubectl files it like any other paper.',
+    line: (t) => `CustomResourceDefinition · trips ${t.trips}`,
+  },
+  admission: {
+    title: 'The desk reads the law itself',
+    body: () =>
+      'A CustomResourceDefinition is validated like anything else — the desk checks the group, the kind, the shape of the form it will hand out later. No special hall for laws.',
+    line: (t) => `${t.mutations.length} defaults stamped · group harbor.city · kind Lighthouse`,
+  },
+  watch_fanout: {
+    title: 'Every office is told — none of them care yet',
+    body: () =>
+      'The couriers go out like always. Zoning shrugs; the foremen shrug; no desk anywhere subscribes to Lighthouses. The law is now in force, and it changes nothing by itself.',
+    line: (t) => `couriers delivered ${t.watchersNotified}/${t.watchersTotal} · offices that will act: 0`,
+  },
+  done: {
+    title: 'A law is not a building',
+    body: () =>
+      'City Hall opens a new counter window: permits of kind Lighthouse are now accepted at the desk. That is the entire consequence. Somebody still has to file one — and somebody else has to care.',
+    line: (t) => `kind registered · trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)} ${UNIT}`,
+    hint: 'Now apply the Lighthouse itself — and watch what does NOT happen.',
+  },
+}
+
+/** Lighthouse-rail overrides: the permit that cites the new law. */
+const LIGHTHOUSE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
+  client: {
+    title: 'A permit citing a brand-new law',
+    body: () =>
+      'kind: Lighthouse — a form City Hall did not know last week. If the law is on the books, this files like any Pod. If it is not, the desk will say so in as many words.',
+    line: (t) => `kind Lighthouse · CRD registered: ${t.crdMatched ? 'yes' : 'no'}`,
+  },
+  admission: {
+    title: 'The desk checks the register',
+    body: (t) =>
+      t.crdMatched
+        ? 'Validation finds the law: lighthouses.harbor.city, registered and accepted. The form is legal; the permit passes like any built-in kind.'
+        : 'Validation checks the register for a law that permits this kind — and this is where the paper stops if the council never passed one.',
+    line: (t) => (t.crdMatched ? 'schema matched: lighthouses.harbor.city' : 'checking the register…'),
+  },
+  etcd_commit: {
+    title: 'A custom row is still a row',
+    body: () =>
+      'The vault does not distinguish. Your Lighthouse is a revision in the same ledger as every Pod and every Node — same quorum, same stamp, same truth.',
+    line: (t) => `revision ${t.commitRev} · quorum 2 of 3 chambers · trips ${t.trips}`,
+  },
+  done: {
+    title: 'The whole lesson on one receipt',
+    body: (t) =>
+      t.rejectedError !== ''
+        ? `The desk refused it: "${t.rejectedError}". A permit cannot cite a law that was never passed — apply the CustomResourceDefinition first, then file this again.`
+        : 'Built-in kinds come with inspectors. Yours gets one only if you run it — and keeps it only while you keep it running. That is the operator pattern, whole.',
+    line: (t) =>
+      t.rejectedError !== ''
+        ? 'rejected at validation · nothing was stored'
+        : `lit · fuel ${t.beaconFuelPct}% · reconciles ${t.operatorReconciles} · trips ${t.trips}`,
+    hint: 'Unstaff the shack from its inspector panel and watch the fuel gauge.',
+  },
+}
+
+/** Rail-aware copy: each rail overrides the stops the rails share. */
 export function traceCopyFor(t: TraceRecord, stop: TraceStop): TraceStopCopy {
   if (t.action === 'delete-pod') {
     const override = DELETE_COPY[stop]
+    if (override) return override
+  }
+  if (t.action === 'apply-crd') {
+    const override = CRD_COPY[stop]
+    if (override) return override
+  }
+  if (t.action === 'apply-lighthouse') {
+    const override = LIGHTHOUSE_COPY[stop]
     if (override) return override
   }
   return TRACE_COPY[stop]
@@ -249,6 +342,15 @@ export function traceFocusId(stop: TraceStop, t: TraceRecord): string {
     case 'grace_countdown': return 'pod.traced'
     case 'sigkill': return 'pod.traced'
     case 'rs_notices': return 'inspectors.desk.replicaset'
-    case 'done': return t.action === 'delete-pod' ? 'service.junction' : 'overview.balloon'
+    /* -- CRD rails: the shack and the breakwater -- */
+    case 'operator': return 'operator.shack'
+    case 'beacon': return 'harbor.lighthouse'
+    case 'done':
+      if (t.action === 'delete-pod') return 'service.junction'
+      if (t.action === 'apply-crd') return 'cityhall.permitdesk'
+      if (t.action === 'apply-lighthouse') {
+        return t.rejectedError !== '' ? 'cityhall.permitdesk' : 'harbor.lighthouse'
+      }
+      return 'overview.balloon'
   }
 }

@@ -21,7 +21,14 @@ import type {
   WatchReg,
 } from '../core/types'
 import { proposeWrite } from './etcd'
-import { rng01, uidSeqOf } from './objects'
+import { getCrd, pushEvent, rng01, uidSeqOf } from './objects'
+
+/**
+ * The shack's courier walks the shore road — deliberately the LONGEST watch
+ * route in the city (beyond the 1.0–1.5 seeded band every other subscriber
+ * draws from). An operator is just a client, far from the control plane.
+ */
+export const OPERATOR_LATENCY_FACTOR = 1.6
 
 /** Enter the permit hall. kubectl, desks, and foremen all queue here alike. */
 export function submit(state: SimState, verb: ApiVerb, obj: K8sObject, source: ComponentId): void {
@@ -53,7 +60,8 @@ export function registerWatcher(state: SimState, subscriber: ComponentId, kinds:
     // A3: every courier walks its own road at its own (seeded, deterministic)
     // pace, ≥1× base latency — so two subscribers observe the SAME commit at
     // DIFFERENT model times. The delete-race lesson depends on this skew.
-    latencyFactor: 1 + rng01(state) * 0.5,
+    // The operator's road is pinned longest of all (see the constant above).
+    latencyFactor: subscriber === 'operator' ? OPERATOR_LATENCY_FACTOR : 1 + rng01(state) * 0.5,
     nextBookmarkAt: 0,
     needsRelist: false,
   }
@@ -76,6 +84,19 @@ export function stepAdmission(state: SimState): void {
       req.stage = 'validating'
       still.push(req)
     } else if (req.stage === 'validating') {
+      // A CR whose kind nobody registered stops here — the real error shape,
+      // verbatim (claims: crd.registration). A law must exist before a permit
+      // can cite it.
+      if (req.verb === 'create' && req.obj.kind === CLAIM_VALUES.crd.kind && !getCrd(state)) {
+        const err = `no matches for kind "${CLAIM_VALUES.crd.kind}" in group "${CLAIM_VALUES.crd.group}"`
+        state.api.rejected += 1
+        pushEvent(state, 'Warning', 'KindNotRegistered', req.obj.name, err)
+        const t = state.trace
+        if (t && (req.obj.name === t.subject || t.action === 'apply-lighthouse')) {
+          t.rejectedError = err
+        }
+        continue
+      }
       req.stage = 'toEtcd'
       still.push(req)
     } else {
@@ -286,6 +307,20 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
     }
     const pod = obj as PodObj | undefined
     if (pod?.spec.nodeName === nodeId) enqueue(node.kubelet.syncQueue, pod.uid)
+    return
+  }
+
+  if (subscriber === 'operator') {
+    // The shack holds one watch: its kind, and the law that defines it.
+    if (rec.kind === 'Lighthouse' || rec.kind === 'CustomResourceDefinition') {
+      if (rec.kind === 'Lighthouse') enqueue(state.controllers.lighthouse.workqueue, rec.uid)
+      else {
+        // a new law: re-look at every lighthouse (there is at most one)
+        for (const o of state.etcd.objects.values()) {
+          if (o.kind === 'Lighthouse') enqueue(state.controllers.lighthouse.workqueue, o.uid)
+        }
+      }
+    }
     return
   }
   // 'ctl.nodelifecycle' is periodic — deliveries only advance sentRev.

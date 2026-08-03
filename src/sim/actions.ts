@@ -100,6 +100,40 @@ spec:
           resources:
             requests: { cpu: 250m, memory: 256Mi }`
 
+const CRD_YAML = `apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: lighthouses.harbor.city
+spec:
+  group: harbor.city
+  scope: Namespaced
+  names:
+    kind: Lighthouse
+    plural: lighthouses
+    singular: lighthouse
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                beamRpm: { type: integer }
+                rangeM: { type: integer }`
+
+const LIGHTHOUSE_YAML = `apiVersion: harbor.city/v1
+kind: Lighthouse
+metadata:
+  name: harbor-light
+  namespace: shops
+spec:
+  beamRpm: 6
+  rangeM: 900`
+
 const CATALOG: ActionDef[] = [
   {
     kind: 'apply-pod',
@@ -171,6 +205,28 @@ const CATALOG: ActionDef[] = [
     subject: 'shopfront',
     traceable: false,
     mkCommand: () => samples.service(),
+  },
+  {
+    kind: 'apply-crd',
+    label: 'Apply a CRD',
+    cmd: 'kubectl apply -f lighthouse-crd.yaml',
+    yaml: CRD_YAML,
+    watch:
+      'City Hall opens a new counter window — a law is not a building. Nothing else changes.',
+    subject: 'lighthouses.harbor.city',
+    traceable: true,
+    mkCommand: () => samples.crd(),
+  },
+  {
+    kind: 'apply-lighthouse',
+    label: 'Apply a Lighthouse',
+    cmd: 'kubectl apply -f lighthouse.yaml',
+    yaml: LIGHTHOUSE_YAML,
+    watch:
+      'Accepted, stored, revisioned — and then nothing, unless someone staffs the shack on the dock.',
+    subject: 'harbor-light',
+    traceable: true,
+    mkCommand: () => samples.lighthouse(),
   },
 ]
 
