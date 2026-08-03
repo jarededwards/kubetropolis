@@ -130,7 +130,7 @@ export interface PodObj extends ObjMeta {
        * Why the LAST run ended (real: lastState.terminated.reason) — kubectl
        * flickers OOMKilled, then settles on the waiting reason CrashLoopBackOff.
        */
-      lastExitReason?: 'Error' | 'OOMKilled'
+      lastExitReason?: 'Error' | 'OOMKilled' | 'Killed'
       /** current working-set estimate, model MiB */
       memMi: number
     }
@@ -516,6 +516,8 @@ export interface LocalPodRuntime {
   readinessSuccesses: number
   readinessFails: number
   livenessFails: number
+  /** Model time of the next liveness visit (its own period from the stamped spec). */
+  nextLivenessAt: number
   /** model time the container last started, for the clean-run backoff reset */
   runningSince?: number
   /** container-create completes at this time */
@@ -1001,6 +1003,8 @@ export interface Knobs {
   chaosCrashLoop: boolean
   chaosOomLeak: boolean
   chaosReadinessFlake: boolean
+  /** Liveness probes fail while on — the kubelet kills and restarts (the wreckers). */
+  chaosLivenessFail: boolean
   chaosNodeFail: ChaosNodeTarget
   chaosRegistryOutage: boolean
   chaosEtcdSlow: boolean
@@ -1040,6 +1044,7 @@ export const DEFAULT_KNOBS: Knobs = {
   chaosCrashLoop: false,
   chaosOomLeak: false,
   chaosReadinessFlake: false,
+  chaosLivenessFail: false,
   chaosNodeFail: 'none',
   chaosRegistryOutage: false,
   chaosEtcdSlow: false,

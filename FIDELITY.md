@@ -75,8 +75,9 @@ number of fixed steps, never their size.
   undercount; the narration would still be ordered correctly.
 - **Repeat-delete nuance**: a second delete with a SHORTER grace period would
   truncate termination in real Kubernetes; here every repeat delete on a
-  terminating scheduled pod is a no-op (`--force --grace-period=0` is not
-  modeled).
+  terminating scheduled pod is a no-op. `--force --grace-period=0` IS modeled
+  as its own command (the row is removed without the foreman's confirmation)
+  and is offered — with its warning — as a scenario decision.
 - **Node Ready=False path**: heartbeat loss yields Ready=Unknown +
   `unreachable` taints (implemented). A reachable-but-unhealthy kubelet would
   yield Ready=False + `not-ready` taints — that path awaits a kubelet-health
@@ -104,11 +105,14 @@ number of fixed steps, never their size.
   registry outage stalls the crane instead of erroring (arrives with the
   image-pull-storm scenario, M4).
 - **Liveness kill path**: probes run and readiness gates traffic; liveness
-  failure injection arrives with chaos wiring (M4).
+  ~~failure injection arrives with chaos wiring (M4)~~ — superseded at v1:
+  `chaosLivenessFail` wires real liveness kills (SIGKILL, exit 137, the
+  restart ladder). Liveness passes whenever the dial is off.
 - **restartPolicy** as a field (Always semantics are implicit).
 - **Probe timeoutSeconds** (stated in stamped defaults, not modeled).
 - **Taint-based eviction**: the stamped 300s tolerations gate an eviction
-  countdown that arrives at M8.
+~~countdown that arrives at M8.~~ Superseded at M8: the countdown shipped —
+  toleration expiry evicts (NodeLost) and the scheduler rebuilds elsewhere.
 
 ## Modeled simplifications (M4)
 
@@ -221,5 +225,35 @@ number of fixed steps, never their size.
   4-second elections every 25 model seconds during which nothing commits and
   the leader lamp hops chambers. No raft internals, no split brain — only the
   true observable: a cluster that cannot write can still serve.
+
+
+## Corrected and disclosed at the v1 review panel
+
+- **The admission desk stamps more than real Kubernetes does.** Every Pod
+  receives a readiness probe, a liveness probe, and a memory limit at
+  admission. Real Kubernetes injects none of these — a Pod with no probes and
+  no limits is legal and common. The model stamps them so every building can
+  teach probe and limit behavior; the shown manifests now declare the probe
+  and limits explicitly so what you read matches what runs.
+- **Network partitions are not modeled.** `chaosNodeFail` cuts power — the
+  district is genuinely dead, so force-delete looks free here. In production,
+  "unreachable" means the control plane cannot tell a dead node from a live
+  one behind a broken network; a partitioned node's containers keep running
+  and keep writing. The force-delete decision copy carries this warning.
+- **`imagePullPolicy: Always` is stamped but not honored on restart** — a
+  restarting container reuses the cached image, understating registry load in
+  crash loops during an outage (claim `images.pullPolicy` is graded `modeled`
+  for this reason).
+- **HPA omits two real scale-up guards**: not-yet-ready pods are not set
+  aside conservatively, and there is no `behavior.scaleUp` rate limit
+  (default: max of +100% or +4 pods per sync) — the model can jump 3→10 in
+  one sync where real Kubernetes steps. Scale-down stabilization IS modeled.
+- **Node-eviction rate limiting is absent**: `--node-eviction-rate` (0.1/s),
+  the secondary zone rate, and the unhealthy-zone threshold that deliberately
+  SLOW or STOP evictions during zone-level outages are not modeled — with
+  three districts you could never see them fire.
+- **`tolerationSeconds` acts as a live dial here**: real Kubernetes stamps it
+  per pod at admission, so changing the default only affects new Pods; the
+  model applies the dial to running countdowns so the arc is watchable.
 
 *This file grows as the model does; it is enforced by the claims spine from M3.*
