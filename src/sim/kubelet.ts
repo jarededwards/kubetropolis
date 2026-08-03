@@ -19,9 +19,15 @@ import {
   CRASH_AFTER_SECONDS,
   CREATE_SECONDS,
   getPod,
+  OOM_LEAK_MI_PER_SEC,
+  PULL_FAIL_AFTER_SECONDS,
   pushEvent,
   TERM_CLEAN_EXIT_SECONDS,
 } from './objects'
+
+const PULL_BACKOFF_BASE = CLAIM_VALUES.imagePull.backoffBaseSeconds
+const PULL_BACKOFF_FACTOR = CLAIM_VALUES.imagePull.backoffFactor
+const PULL_BACKOFF_CAP = CLAIM_VALUES.imagePull.backoffCapSeconds
 
 const SWEEP = CLAIM_VALUES.kubeletHeartbeat.syncFrequencySeconds
 const BACKOFF_BASE = CLAIM_VALUES.crashLoop.baseSeconds
@@ -40,7 +46,7 @@ export function stepKubelets(state: SimState, dt: number): void {
         if (!node.kubelet.syncQueue.includes(uid)) node.kubelet.syncQueue.push(uid)
       }
     }
-    stepTimers(state, node)
+    stepTimers(state, node, dt)
   }
 }
 
@@ -52,8 +58,10 @@ function stepPulls(state: SimState, node: NodeSim, dt: number): void {
   // serializeImagePulls (claims: images.pullSerialized): one crane trip at a
   // time per district — everything else waits in the queue.
   const concurrent = CLAIM_VALUES.imagePull.serialized ? 1 : node.pulls.length
-  const rate = state.knobs.chaosRegistryOutage ? 0 : state.knobs.registryMBps
+  const outage = state.knobs.chaosRegistryOutage
+  const rate = outage ? 0 : state.knobs.registryMBps
   const finished: typeof node.pulls = []
+  const failed: typeof node.pulls = []
   for (const pull of node.pulls.slice(0, concurrent)) {
     if (pull.startedAt === undefined) {
       // the crane engages: cargo leaves the harbor for this district
@@ -62,6 +70,10 @@ function stepPulls(state: SimState, node: NodeSim, dt: number): void {
       if (letter === 'a' || letter === 'b' || letter === 'c') {
         state.flowOutbox.push({ route: `pull.${letter}`, kind: 'imagePull' })
       }
+    }
+    if (outage && state.now - pull.startedAt >= PULL_FAIL_AFTER_SECONDS) {
+      failed.push(pull)
+      continue
     }
     pull.doneMB += rate * dt
     if (pull.doneMB >= pull.totalMB) finished.push(pull)
@@ -72,8 +84,35 @@ function stepPulls(state: SimState, node: NodeSim, dt: number): void {
     pushEvent(state, 'Normal', 'Pulled', pull.image, `cargo landed at ${node.id}`)
     const pod = getPod(state, pull.podUid)
     if (pod && pod.spec.nodeName === node.id && !pod.deletionTimestamp) {
+      const rt = runtimeFor(node, pod)
+      rt.pullBackoffSec = 0
+      rt.pullBackoffUntil = undefined
       beginCreate(state, node, pod)
     }
+  }
+  for (const pull of failed) {
+    node.pulls.splice(node.pulls.indexOf(pull), 1)
+    const pod = getPod(state, pull.podUid)
+    if (!pod || pod.spec.nodeName !== node.id || pod.deletionTimestamp) continue
+    const rt = runtimeFor(node, pod)
+    // The pull ladder mirrors the crash ladder (claims: images.backoffCap).
+    const rung =
+      rt.pullBackoffSec && rt.pullBackoffSec > 0
+        ? Math.min(rt.pullBackoffSec * PULL_BACKOFF_FACTOR, PULL_BACKOFF_CAP)
+        : PULL_BACKOFF_BASE
+    rt.pullBackoffSec = rung
+    rt.pullBackoffUntil = state.now + rung
+    publishStatus(state, node, pod, (p) => {
+      p.status.container.state = 'waiting'
+      p.status.container.reason = 'ErrImagePull'
+    })
+    pushEvent(
+      state,
+      'Warning',
+      'PullFailed',
+      pod.name,
+      `the harbor is unreachable — ${pull.image} failed; retry in ${rung}s`,
+    )
   }
 }
 
@@ -134,7 +173,10 @@ function hashImage(image: string): number {
 function startupPath(state: SimState, node: NodeSim, pod: PodObj): void {
   // A second delivery can arrive before our own status write commits; the
   // local runtime, not the published state, is the re-entrancy guard.
-  if (runtimeFor(node, pod).creatingUntil !== undefined) return
+  const guard = runtimeFor(node, pod)
+  if (guard.creatingUntil !== undefined) return
+  // A failed pull is waiting out its ladder rung — do not re-queue early.
+  if (guard.pullBackoffUntil !== undefined && state.now < guard.pullBackoffUntil) return
   const image = pod.spec.image
   const mustPull = pod.spec.imagePullPolicy === 'Always' || !node.imageCache.has(image)
   if (mustPull) {
@@ -188,7 +230,7 @@ function beginCreate(state: SimState, node: NodeSim, pod: PodObj): void {
  * Timer-driven work: create completion, probes, crashes, backoff, termination.
  * -------------------------------------------------------------------------*/
 
-function stepTimers(state: SimState, node: NodeSim): void {
+function stepTimers(state: SimState, node: NodeSim, dt: number): void {
   for (const rt of node.kubelet.runtime.values()) {
     const pod = getPod(state, rt.podUid)
     if (!pod) {
@@ -205,6 +247,7 @@ function stepTimers(state: SimState, node: NodeSim): void {
     if (rt.creatingUntil !== undefined && state.now >= rt.creatingUntil) {
       rt.creatingUntil = undefined
       rt.runningSince = state.now
+      rt.memMi = pod.spec.requests.memMi
       rt.nextProbeAt = state.now + pod.spec.probes.readiness.initialDelaySeconds
       rt.readinessSuccesses = 0
       rt.readinessFails = 0
@@ -221,7 +264,7 @@ function stepTimers(state: SimState, node: NodeSim): void {
       continue
     }
 
-    // backoff rung expired → rebuild
+    // crash-backoff rung expired → rebuild
     if (
       pod.status.container.state === 'waiting'
       && pod.status.container.backoffUntil !== undefined
@@ -234,7 +277,38 @@ function stepTimers(state: SimState, node: NodeSim): void {
       continue
     }
 
+    // pull-backoff rung: flicker ErrImagePull → ImagePullBackOff while
+    // waiting (the kubectl signature), then retry when the rung expires.
+    if (pod.status.container.state === 'waiting' && rt.pullBackoffUntil !== undefined) {
+      if (
+        pod.status.container.reason === 'ErrImagePull'
+        && state.now >= rt.pullBackoffUntil - (rt.pullBackoffSec ?? 0) + 1
+      ) {
+        publishStatus(state, node, pod, (p) => {
+          p.status.container.reason = 'ImagePullBackOff'
+        })
+      }
+      if (state.now >= rt.pullBackoffUntil) {
+        rt.pullBackoffUntil = undefined
+        startupPath(state, node, pod)
+      }
+      continue
+    }
+
     if (pod.status.container.state !== 'running') continue
+
+    // chaosOomLeak: the v2 image's working set grows; the kernel watches the
+    // REAL usage (local runtime), while published status updates coarsely.
+    if (state.knobs.chaosOomLeak && pod.spec.image.endsWith(':v2') && rt.memMi !== undefined) {
+      const before = Math.floor(rt.memMi / 32)
+      rt.memMi += OOM_LEAK_MI_PER_SEC * dt
+      if (Math.floor(rt.memMi / 32) !== before) {
+        const published = Math.round(rt.memMi)
+        publishStatus(state, node, pod, (p) => {
+          p.status.container.memMi = published
+        })
+      }
+    }
 
     // chaos: the app exits on schedule
     if (rt.crashAt !== undefined && state.now >= rt.crashAt) {
@@ -243,8 +317,9 @@ function stepTimers(state: SimState, node: NodeSim): void {
       continue
     }
 
-    // OOM: the kernel, not Kubernetes, pulls the breaker (exit 137)
-    if (pod.status.container.memMi > pod.spec.limitMemMi) {
+    // OOM: the kernel, not Kubernetes, pulls the breaker (exit 137) — against
+    // the real working set, not the last coarse status report.
+    if ((rt.memMi ?? pod.status.container.memMi) > pod.spec.limitMemMi) {
       containerExited(state, node, pod, rt, 137, 'OOMKilled')
       continue
     }
@@ -253,7 +328,10 @@ function stepTimers(state: SimState, node: NodeSim): void {
     if (state.now >= rt.nextProbeAt) {
       rt.nextProbeAt = state.now + pod.spec.probes.readiness.periodSeconds
       const flaky = state.knobs.chaosReadinessFlake
-      const readinessOk = !flaky
+      // Flake = 40-second bad windows alternating with 40 good — long enough
+      // for failureThreshold consecutive misses at the 10s period, so the
+      // CLOSED sign flips both ways, deterministically, with zero restarts.
+      const readinessOk = !flaky || Math.floor(state.now / 40) % 2 === 0
       if (readinessOk) {
         rt.readinessFails = 0
         rt.readinessSuccesses += 1
@@ -288,6 +366,7 @@ function containerExited(
   reason: 'Error' | 'OOMKilled',
 ): void {
   const cleanFor = rt.runningSince !== undefined ? state.now - rt.runningSince : 0
+  rt.memMi = pod.spec.requests.memMi // a fresh container starts fresh; a leaky image leaks again
   const prev = pod.status.container.backoffSec
   const nextBackoff =
     cleanFor >= BACKOFF_RESET_AFTER || prev === 0

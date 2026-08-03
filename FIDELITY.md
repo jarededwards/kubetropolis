@@ -95,7 +95,12 @@ number of fixed steps, never their size.
 
 ## Absent (disclosed by claims with coverage 'absent')
 
-- **Image pull failures**: no ErrImagePull / ImagePullBackOff path yet — a
+- ~~Image pull failures~~ **Built at M4**: a pull against an unreachable
+  registry fails after a short connect window into ErrImagePull, then waits
+  out an ImagePullBackOff ladder (10s doubling to the 300s cap — claims:
+  images.backoffCap); districts holding the image keep building from the
+  shelf. Superseded text below kept for the record:
+- **Image pull failures (pre-M4)**: no ErrImagePull / ImagePullBackOff path yet — a
   registry outage stalls the crane instead of erroring (arrives with the
   image-pull-storm scenario, M4).
 - **Liveness kill path**: probes run and readiness gates traffic; liveness

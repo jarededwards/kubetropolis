@@ -289,14 +289,14 @@ export const CLAIMS: readonly K8sClaim[] = [
   },
   {
     id: 'images.backoffCap',
-    statement: `Failed image pulls retry with a backoff that grows to ${CLAIM_VALUES.imagePull.backoffCapSeconds}s.`,
+    statement:
+      `Failed image pulls retry on a backoff starting at ${CLAIM_VALUES.imagePull.backoffBaseSeconds}s `
+      + `and doubling to a ${CLAIM_VALUES.imagePull.backoffCapSeconds}s cap — ErrImagePull on the `
+      + 'failure, ImagePullBackOff while waiting.',
     source: `${K8S_DOCS}concepts/containers/images/`,
-    coverage: 'absent',
-    modelNote:
-      'No pull-failure path exists yet: a registry outage stalls the crane rather '
-      + 'than raising ErrImagePull/ImagePullBackOff. Arrives with the image-pull-storm '
-      + 'scenario at M4; disclosed in FIDELITY.md.',
-    usedBy: ['FIDELITY.md'],
+    coverage: 'exact',
+    values: 'imagePull',
+    usedBy: ['sim/kubelet'],
   },
   {
     id: 'etcd.compaction',

@@ -28,6 +28,10 @@ export const CREATE_SECONDS = 1.5
 export const TERM_CLEAN_EXIT_SECONDS = 2
 /** chaosCrashLoop: the app exits this long after starting, model seconds */
 export const CRASH_AFTER_SECONDS = 20
+/** chaosOomLeak: v2 working-set growth, model MiB per model second */
+export const OOM_LEAK_MI_PER_SEC = 4
+/** a pull attempt against an unreachable registry fails after this long */
+export const PULL_FAIL_AFTER_SECONDS = 4
 /** unschedulable pods retry after this backoff, model seconds */
 export const SCHED_BACKOFF_SECONDS = 5
 /** max pods a ReplicaSet desk files per reconcile visit */

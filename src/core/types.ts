@@ -413,6 +413,12 @@ export interface LocalPodRuntime {
   preStopUntil?: number
   /** termination: SIGTERM delivered at */
   sigtermAt?: number
+  /** kernel-visible working set while running (leak growth lives here) */
+  memMi?: number
+  /** failed-pull ladder rung, model seconds (10 → 20 → … → 300) */
+  pullBackoffSec?: number
+  /** next pull retry at */
+  pullBackoffUntil?: number
   /** termination: SIGKILL fires at (sigterm + grace) */
   killAt?: number
 }
