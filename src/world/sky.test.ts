@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/world/sky.test.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: assertions re-pinned to
+ * the Beacon asterism names. */
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 

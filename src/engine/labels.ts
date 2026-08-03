@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/engine/labels.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: district colour/label
+ * maps and label-exclusion ids are re-keyed from PostgreSQL districts to
+ * Kubetropolis components. */
 import * as THREE from 'three'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 

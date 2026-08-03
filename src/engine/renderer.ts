@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/engine/renderer.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: night-glow lights are
+ * re-anchored to Kubetropolis civic anchors and internal texture/scene names
+ * are renamed from the Kubetropolis.* namespace. */
 import * as THREE from 'three'
 import { applyBoxBevelDetail } from '../core/beveled-box'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
@@ -572,8 +576,8 @@ export function createRenderer(container: HTMLElement, bus: Bus): RendererApi {
       stencilBuffer: false,
       depthTexture: new THREE.DepthTexture(w, h, THREE.UnsignedIntType),
     })
-    composerTarget.texture.name = 'PGSimCity.composer.hdr'
-    composerTarget.depthTexture!.name = 'PGSimCity.composer.depth'
+    composerTarget.texture.name = 'Kubetropolis.composer.hdr'
+    composerTarget.depthTexture!.name = 'Kubetropolis.composer.depth'
     composer = new EffectComposer(renderer, composerTarget)
     composerDepthEnabled = true
     composer.setPixelRatio(pr)
@@ -683,7 +687,7 @@ export function createRenderer(container: HTMLElement, bus: Bus): RendererApi {
       target.depthTexture = enabled
         ? new THREE.DepthTexture(target.width, target.height, THREE.UnsignedIntType)
         : null
-      if (target.depthTexture) target.depthTexture.name = `PGSimCity.composer.depth${i + 1}`
+      if (target.depthTexture) target.depthTexture.name = `Kubetropolis.composer.depth${i + 1}`
     }
     composerDepthEnabled = enabled
   }

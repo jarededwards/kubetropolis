@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/core/destinations.test.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: destination-name
+ * expectations re-pointed to Kubetropolis districts. */
 import { describe, expect, it } from 'vitest'
 
 import { DESTINATIONS, destinationForDistrict, destinationForId } from './destinations'

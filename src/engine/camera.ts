@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/engine/camera.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the island-plate import
+ * is re-pointed from world/slonik to world/plan, and the overview toast is
+ * reworded for Kubetropolis. */
 import * as THREE from 'three'
 import type { Bus, CameraApi, CameraMode, FocusSpec } from '../core/types'
 import { clamp, clamp01, damp, easeInOutCubic, lerp, reduceMotion } from '../core/util'
@@ -99,7 +103,7 @@ const HOME_PIVOT = new THREE.Vector3(-18, 0, -16)
  *    which world direction lands at the top of frame. The rig always uses world
  *    up for roll, so screen-up is the horizontal part of `dir`, negated. Putting
  *    the camera slightly north-west therefore puts world south-east at the top
- *    — which is the elephant's own up, so the mark stands upright and faces
+ *    — which is the island plan's own up, so the plate reads upright and faces
  *    left, exactly as it is drawn, rather than lying on its side.
  *  - the distance is derived from the plate's extent along the two screen axes
  *    (see PLAN_SPAN), not guessed, and it backs off on a narrow window the same
@@ -1125,7 +1129,7 @@ export function createCameraRig(
       { instant, duration: 1.4 },
       true,
     )
-    bus.emit('toast', { text: 'Overview — the plate is the PostgreSQL elephant', kind: 'info', ms: 2600 })
+    bus.emit('toast', { text: 'Overview — the whole island, the ledger at its centre', kind: 'info', ms: 2600 })
   }
 
   function setPivot(p: THREE.Vector3 | [number, number, number]): void {

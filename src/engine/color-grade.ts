@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/engine/color-grade.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: internal material/
+ * texture names renamed from the PGSimCity.* namespace. */
 import * as THREE from 'three'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
@@ -120,7 +123,7 @@ export class GoldenHourOutputPass extends OutputPass {
           '\n\t\t\tif ( pgGradeEnabled > 0.5 ) gl_FragColor.rgb = pgGoldenHourGrade( gl_FragColor.rgb, vUv );' +
           GRADE_ANCHOR,
       )
-    this.material.name = 'PGSimCity.GoldenHourOutput'
+    this.material.name = 'Kubetropolis.GoldenHourOutput'
   }
 
   setDaylight(enabled: boolean): void {

@@ -1,3 +1,6 @@
+/* Derived from PGSimCity tools/bake-indirect.mjs @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the CDP gate path is
+ * env-overridable and the staging probe targets window.KUBETROPOLIS. */
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import { mkdirSync, readdirSync, rmdirSync, statSync, writeFileSync } from 'node:fs'

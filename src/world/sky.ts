@@ -1,3 +1,7 @@
+/* Derived from PGSimCity src/world/sky.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the Slonik constellation
+ * is replaced with the Beacon asterism (a lighthouse over an anchor) and
+ * plate commentary now describes the island. */
 import * as THREE from 'three'
 import { COLOR, mixHex } from '../core/theme'
 import type { Atmosphere } from '../core/theme'

@@ -1,3 +1,6 @@
+/* Derived from PGSimCity src/engine/picker.ts @ 6d2c854 (Apache-2.0,
+ * © 2026 Nikolay Samokhvalov). Modified for Kubetropolis: the district colour map
+ * is re-keyed from PostgreSQL districts to Kubetropolis districts. */
 import * as THREE from 'three'
 
 import type { Registry } from '../core/registry'
