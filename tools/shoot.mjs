@@ -2,7 +2,7 @@
 // wait real wall-clock time for software WebGL, screenshot, probe app state.
 // Named *-keep so the scratchpad sweep does not delete it.
 import { spawn } from 'node:child_process'
-import { writeFileSync, mkdirSync, rmdirSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdirSync, rmdirSync, readdirSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { acquireCdpProfile } from './cdp-profile.mjs'
@@ -79,7 +79,17 @@ const removeProcessCleanup = installProcessCleanup(() => run.cleanup())
 
 await acquireSlot()
 
-const chrome = spawn(process.env.CHROME_BIN || 'google-chrome', [
+/* CHROME_BIN wins; otherwise find a Chrome for this host (macOS included). */
+function resolveChrome() {
+  if (process.env.CHROME_BIN) return process.env.CHROME_BIN
+  if (process.platform === 'darwin') {
+    const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    if (existsSync(mac)) return mac
+  }
+  return 'google-chrome'
+}
+
+const chrome = spawn(resolveChrome(), [
   '--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars',
   '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
   // This machine needs all three or DevToolsActivePort never appears.

@@ -76,7 +76,8 @@ camera-floor.test.ts V · build-metadata.test.ts **(A: define names)** ·
 cdp-profile.test.ts V · cdp-run.test.ts V
 
 ## tools
-shoot.mjs **(A: env-overridable gate path + window.KUBETROPOLIS probe)** ·
+shoot.mjs **(A: env-overridable gate path + window.KUBETROPOLIS probe; M3:
+Chrome auto-detected on macOS when CHROME_BIN unset)** ·
 cdp-profile.mjs **(A: profile root renamed; profileIsInUse gains a `ps`
 fallback for hosts without /proc — macOS)** ·
 cdp-run.mjs V · reap.sh **(A: env-overridable gate path)** ·

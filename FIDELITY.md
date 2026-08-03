@@ -62,6 +62,17 @@ number of fixed steps, never their size.
   compaction forces lagging watchers to relist, and healthy watchers advance
   by bookmarks.
 - **One container per pod** (plus an optional init container, unwired at M1).
+
+## Modeled simplifications (M3)
+
+- **Image layers are two-tier.** A pull has 5–7 layers; a cached image of the
+  same repository counts as shared base layers and shrinks the transfer to
+  the top two. Real layer graphs are arbitrary DAGs — the modeled lesson
+  (same-repo upgrades pull fast on warm districts) survives, the topology
+  does not.
+- **The trace counts trips off the etcd log.** If a compaction trims the log
+  mid-trace (5-model-minute interval vs ~15-model-second traces), trips can
+  undercount; the narration would still be ordered correctly.
 - **Repeat-delete nuance**: a second delete with a SHORTER grace period would
   truncate termination in real Kubernetes; here every repeat delete on a
   terminating scheduled pod is a no-op (`--force --grace-period=0` is not

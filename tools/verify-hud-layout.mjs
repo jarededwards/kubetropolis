@@ -15,8 +15,19 @@
  */
 
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { acquireCdpProfile } from './cdp-profile.mjs'
 import { createCdpRunCleanup, installProcessCleanup } from './cdp-run.mjs'
+
+/** CHROME_BIN wins; otherwise find a Chrome for this host (macOS included). */
+export function resolveChrome() {
+  if (process.env.CHROME_BIN) return process.env.CHROME_BIN
+  if (process.platform === 'darwin') {
+    const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+    if (existsSync(mac)) return mac
+  }
+  return 'google-chrome'
+}
 
 const APP_URL = process.argv[2] ?? 'http://localhost:4173/'
 const PORT = Number(process.env.CDP_PORT ?? 9571)
@@ -32,7 +43,7 @@ const run = createCdpRunCleanup({ profile })
 const removeProcessCleanup = installProcessCleanup(() => run.cleanup())
 
 const chrome = spawn(
-  process.env.CHROME_BIN ?? 'google-chrome',
+  resolveChrome(),
   [
     '--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--hide-scrollbars',
     '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
@@ -198,6 +209,52 @@ if (!help.openOk) fail('help', 'overlay missing or notice absent')
 if (!help.escapeHandled) fail('help', 'Escape was not offered/handled')
 if (!help.closed) fail('help', 'did not close on Escape')
 
+/* M3 — the action picker: opens, is the only surface, closes on Escape. */
+const picker = await evaluate(`(() => {
+  const K = window.KUBETROPOLIS
+  K.bus.emit('trace:open', {})
+  const overlay = document.querySelector('.trace-picker')
+  const openOk = !!overlay && !overlay.hidden
+  const grammar = (overlay?.textContent || '').includes('complete grammar')
+  const visiblePanels = Array.from(document.querySelectorAll('.pg-panel')).filter((p) => {
+    const r = p.getBoundingClientRect()
+    return p.offsetParent !== null && r.width > 0 && r.height > 0
+  }).length
+  const payload = { handled: false }
+  K.bus.emit('ui:escape', payload)
+  return { openOk, grammar, visiblePanels, escapeHandled: payload.handled, closed: overlay.hidden }
+})()`)
+if (!picker.openOk) fail('picker', 'did not open on trace:open')
+if (!picker.grammar) fail('picker', 'fidelity sentence missing')
+if (picker.visiblePanels > 1) fail('picker', `${picker.visiblePanels} panels visible with the picker open`)
+if (!picker.escapeHandled || !picker.closed) fail('picker', 'Escape did not close it first')
+
+/* M3 — the narration card: lower third, one voice, Esc ends the trace. */
+const trace = await evaluate(`(() => {
+  const K = window.KUBETROPOLIS
+  K.bus.emit('trace:run', { statement: 'apply-pod', playback: 'step' })
+  const card = document.querySelector('.tour-narrate')
+  const r = card?.getBoundingClientRect()
+  const vh = window.innerHeight
+  const visible = !!r && r.width > 0 && card.classList.contains('is-live')
+  const lowerThird = !!r && r.top >= vh * 0.5 && r.bottom <= vh + 1
+  const oneCard = document.querySelectorAll('.tour-narrate').length === 1
+  const transport = !!card?.querySelector('.tour-btn--next')
+  const tracing = !!K.sim.state.trace
+  const payload = { handled: false }
+  K.bus.emit('ui:escape', payload)
+  const endedOnEscape = payload.handled && K.sim.state.trace === null
+  const hidden = !card.classList.contains('is-live')
+  return { visible, lowerThird, oneCard, transport, tracing, endedOnEscape, hidden }
+})()`)
+if (!trace.visible) fail('trace', 'narration card did not appear')
+if (!trace.lowerThird) fail('trace', 'narration card is not in the lower third')
+if (!trace.oneCard) fail('trace', 'more than one narration card exists')
+if (!trace.transport) fail('trace', 'transport controls missing')
+if (!trace.tracing) fail('trace', 'sim trace did not arm')
+if (!trace.endedOnEscape) fail('trace', 'Escape did not end the trace/restore knobs')
+if (!trace.hidden) fail('trace', 'card stayed visible after close')
+
 removeProcessCleanup()
 await run.cleanup()
 
@@ -206,5 +263,5 @@ if (failures.length > 0) {
   for (const f of failures) console.error('  ' + f)
   process.exit(1)
 }
-console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help')
+console.log('HUD layout verification passed: ' + VIEWPORTS.map((v) => `${v.width}x${v.height}`).join(', ') + ' + inspector + help + picker + trace card')
 process.exit(0)

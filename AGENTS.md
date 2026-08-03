@@ -39,3 +39,11 @@ Backtick (`) toggles a read-only sim state overlay; `?debug=1` opens with it
 on. Console demo: `KUBETROPOLIS.sim.apply(KUBETROPOLIS.samples.deployment())`,
 then watch pods walk Pending → Running. Also `samples.pod()`,
 `samples.scale(n)`, `samples.deletePod(name)`.
+
+## The flagship trace (M3+)
+`R` (or the HUD's "run a command ▸") opens the picker; choosing an action
+starts a step-mode narrated trace. Headless: `KUBETROPOLIS.bus.emit(
+'trace:run', { statement: 'apply-pod', playback: 'step' })`, advance with
+`KUBETROPOLIS.sim.traceNext()`, close with `KUBETROPOLIS.sim.endTrace()`.
+Esc closes trace → picker → panel, in that order. Chrome is auto-detected on
+macOS; CHROME_BIN still wins.
