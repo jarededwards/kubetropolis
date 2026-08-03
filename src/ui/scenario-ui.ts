@@ -135,7 +135,8 @@ export function createScenarioUi(ctx: UiContext): UiModule {
     const def = scenarioById(run.id)
     const beat = run.beat
     const key = beat ? `${run.id}:${beat.at}:${run.decisionAvailable}:${run.choiceTaken ?? ''}` : run.id
-    const consequence = run.consequence ?? ''
+    const fidelityNote = run.fidelityNote ? ` — ${run.fidelityNote}` : ''
+    const consequence = (run.consequence ?? '') + fidelityNote
     if (key === lastBeatKey && consequence === lastConsequence) return
     lastBeatKey = key
     lastConsequence = consequence
