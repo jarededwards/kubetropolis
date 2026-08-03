@@ -6,7 +6,7 @@ import { clockAtmosphereAt } from '../core/themes'
 import type { ThemeApi } from '../core/types'
 import {
   ESTABLISHING_BAND,
-  SLONIK_LINK_OPACITY,
+  ASTERISM_LINK_OPACITY,
   SUN_ANGULAR_DIAMETER_DEG,
   applySkyAtmosphere,
   cloudAngularWidths,
@@ -224,16 +224,16 @@ describe('day sky', () => {
   })
 })
 
-describe('Slonik asterism', () => {
+describe('Beacon asterism', () => {
   it('is a visible-but-faint part of the night-only starfield', () => {
     const sky = createSky({} as ThemeApi)
     const stars = sky.getObjectByName('sky.stars')
-    const slonik = sky.getObjectByName('sky.slonik') as THREE.LineSegments
+    const beacon = sky.getObjectByName('sky.asterism') as THREE.LineSegments
 
-    expect(SLONIK_LINK_OPACITY).toBeGreaterThanOrEqual(0.2)
-    expect(SLONIK_LINK_OPACITY).toBeLessThan(0.35)
-    expect(slonik.parent).toBe(stars)
-    expect((slonik.material as THREE.LineBasicMaterial).opacity).toBe(SLONIK_LINK_OPACITY)
+    expect(ASTERISM_LINK_OPACITY).toBeGreaterThanOrEqual(0.2)
+    expect(ASTERISM_LINK_OPACITY).toBeLessThan(0.35)
+    expect(beacon.parent).toBe(stars)
+    expect((beacon.material as THREE.LineBasicMaterial).opacity).toBe(ASTERISM_LINK_OPACITY)
 
     ;(sky.userData.dispose as () => void)()
   })
@@ -242,13 +242,13 @@ describe('Slonik asterism', () => {
     // Today this rests on an implicit parent link to sky.stars. Assert the
     // behaviour instead, so a refactor that reparents the links has to keep it.
     const sky = createSky({} as ThemeApi)
-    const slonik = sky.getObjectByName('sky.slonik')
+    const beacon = sky.getObjectByName('sky.asterism')
 
     applySkyAtmosphere(sky, ATMOSPHERE.night, 'high')
-    expect(shows(slonik)).toBe(true)
+    expect(shows(beacon)).toBe(true)
 
     applySkyAtmosphere(sky, ATMOSPHERE.day, 'high')
-    expect(shows(slonik)).toBe(false)
+    expect(shows(beacon)).toBe(false)
 
     ;(sky.userData.dispose as () => void)()
   })

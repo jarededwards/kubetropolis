@@ -105,7 +105,7 @@ export function skyScatteringEnabled(air: Atmosphere, quality: QualityLevel): bo
  *   - the HUD. Its opaque bar covers the top of the canvas — 118 px of 760 on
  *     the desktop, 60 px of 844 on the phone — and that is the part of the
  *     frame nearest the horizon;
- *   - the plate. It is finite and Slonik-shaped, so the skyline it cuts is not
+ *   - the plate. It is finite and island-shaped, so the skyline it cuts is not
  *     at one elevation; measured column by column it runs -12.4° to -16.1°.
  *
  * Measured off rendered frames, not derived: the visitor's sky is -11.5° to
@@ -176,57 +176,57 @@ export function dayHazeMix(h: number): number {
 }
 
 /* ---------------------------------------------------------------------------
- * SLONIK, the asterism.
+ * THE BEACON, the asterism.
  *
- * Fourteen stars in the eastern sky, above the WAL district — which is where a
- * visitor at the establishing shot is already looking. It is deliberately a
- * *sparse* reading of the outline, not a tracing of it: the points sit on the
- * strong corners (brow, crown, ear, notch, jaw, trunk, curl) with the spacing
- * left irregular, the magnitudes uneven, and only some of the links drawn. An
- * asterism you have to finish yourself is the only kind that reads as one.
+ * Thirteen stars in the western sky, above the harbor — where the breakwater
+ * points. A lighthouse over an anchor: tower, lamp, the spread of the beam,
+ * and the anchor's crown and flukes below. It is deliberately a *sparse*
+ * reading of the figure, not a tracing of it: irregular spacing, uneven
+ * magnitudes, only some links drawn. An asterism you have to finish yourself
+ * is the only kind that reads as one.
  *
  * Coordinates are in the constellation's own plane, x right, y up, degrees.
  * -------------------------------------------------------------------------*/
 
 /** Where the figure sits: azimuth in the XZ plane, then elevation. */
-const ASTERISM_AZ = Math.atan2(0.851, 0.522)
+const ASTERISM_AZ = Math.atan2(-0.851, 0.402)
 const ASTERISM_EL = 0.42 // ~24°, high enough to clear the skyline
 /** Degrees of sky per unit of the figure below. */
 const ASTERISM_SCALE = 1.42
 /** Faint but deliberately visible against the night dome. */
-export const SLONIK_LINK_OPACITY = 0.22
+export const ASTERISM_LINK_OPACITY = 0.22
 
 /** x, y, magnitude 0..1. */
 const ASTERISM: readonly (readonly [number, number, number])[] = [
-  [-11.4, 1.0, 0.55], // the face, low
-  [-12.2, 9.6, 0.85], // the brow
-  [-7.6, 15.2, 0.5], // the forehead
-  [-1.4, 17.0, 0.95], // the crown — the bright one
-  [3.2, 14.6, 0.45], // the temple dip
-  [8.6, 16.4, 0.7], // the top of the ear
-  [15.4, 8.0, 0.9], // the ear, outer
-  [13.6, -1.4, 0.5],
-  [10.2, -8.4, 0.65], // the bottom of the ear
-  [6.4, -5.6, 0.4], // the notch
-  [1.0, -10.2, 0.6], // the jaw
-  [-4.4, -13.4, 0.5], // the trunk leaves the jaw
-  [-10.6, -16.8, 0.75], // the trunk
-  [-15.8, -14.2, 0.85], // the curl
+  [-1.2, 16.8, 0.95], // the lamp — the bright one
+  [-4.6, 13.2, 0.5], // gallery, west corner
+  [2.4, 13.0, 0.5], // gallery, east corner
+  [-3.2, 6.4, 0.6], // tower, west taper
+  [1.6, 6.2, 0.55], // tower, east taper
+  [-2.6, -0.8, 0.7], // tower foot
+  [-10.8, 12.0, 0.45], // the beam, west spread
+  [8.4, 11.4, 0.4], // the beam, east spread
+  [-0.6, -6.2, 0.8], // anchor ring
+  [-5.8, -10.6, 0.55], // anchor arm, west
+  [4.6, -10.9, 0.55], // anchor arm, east
+  [-8.6, -15.4, 0.75], // fluke, west
+  [7.2, -15.8, 0.7], // fluke, east
 ]
 
 /** Which stars are joined. Gaps are on purpose. */
 const ASTERISM_LINKS: readonly (readonly [number, number])[] = [
-  [1, 2],
-  [2, 3],
-  [3, 4],
-  [4, 5],
-  [5, 6],
-  [6, 7],
-  [8, 9],
-  [10, 11],
-  [11, 12],
-  [12, 13],
-  [0, 1],
+  [0, 1],   // lamp → gallery west
+  [0, 2],   // lamp → gallery east
+  [1, 3],   // tower west edge
+  [2, 4],   // tower east edge
+  [3, 5],   // taper to the foot
+  [0, 6],   // the beam, west
+  [0, 7],   // the beam, east
+  [5, 8],   // foot → anchor ring
+  [8, 9],   // ring → west arm
+  [8, 10],  // ring → east arm
+  [9, 11],  // arm → west fluke
+  [10, 12], // arm → east fluke
 ]
 
 const skyVert = /* glsl */ `
@@ -788,14 +788,14 @@ export function createSky(theme: ThemeApi): THREE.Object3D {
     // Same queue trick as the stars: opaque queue, additive blend, no depth.
     transparent: false,
     blending: THREE.AdditiveBlending,
-    opacity: SLONIK_LINK_OPACITY,
+    opacity: ASTERISM_LINK_OPACITY,
     depthWrite: false,
     depthTest: false,
     toneMapped: false,
     fog: false,
   })
   const links = new THREE.LineSegments(linkGeo, linkMat)
-  links.name = 'sky.slonik'
+  links.name = 'sky.asterism'
   links.frustumCulled = false
   links.renderOrder = -998
   links.raycast = () => {}
