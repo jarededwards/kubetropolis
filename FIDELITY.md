@@ -128,4 +128,34 @@ number of fixed steps, never their size.
 - **Scenario knob restore is wholesale**: ending a scenario restores the knob
   set captured at entry — a knob you changed mid-scenario is restored away.
 
+## Modeled simplifications (M6)
+
+- **One Service, one EndpointSlice.** The demo Service selects the shopfront
+  pods; the slice folds `endpoints` into spec so standard merge semantics and
+  the generation-on-real-change rule apply. Real slices carry endpoints/ports
+  at top level and shard at 100 endpoints.
+- **Routing is junction round-robin + street truth.** The junction assigns each
+  request a door by round-robin over the DIRECTORY's ready listings; whether
+  the door serves is checked against the street (container state, SIGTERM,
+  flake windows). Real kube-proxy DNATs per its own per-node programming with
+  no central junction; the per-district programmed views exist and are what
+  the signage renders — their lag is real, their role in packet paths is
+  presentational. A request that reaches a non-serving listed door counts as
+  MISROUTED; real clients see connection errors and retries, not a counter.
+- **Arrivals are a deterministic accumulator**, not Poisson — determinism
+  outranks statistical realism everywhere in this model.
+- **Synthesized CPU**: each served request costs `reqCpuCostM` millicore-
+  seconds, EMA-smoothed. There is no metrics-server; the substation needle IS
+  the metric the future HPA reads.
+- **The preStop knob applies at termination time** so "try the fix → re-run"
+  teaches in one breath. Real preStop is pod spec fixed at admission; changing
+  it is a template edit, and a template edit is a rollout. (The stamped spec
+  value still appears in the admission receipt; the kubelet honors the larger
+  of spec and knob.)
+- **A flaking app fails its users in the same windows it fails its probes** —
+  one deterministic signal drives both, which is the honest version of "your
+  health check should mean something."
+- **Repeat-delete nuance**: a second delete with a SHORTER grace period (which
+  real Kubernetes honors) is not modeled; repeat deletes are no-ops.
+
 *This file grows as the model does; it is enforced by the claims spine from M3.*

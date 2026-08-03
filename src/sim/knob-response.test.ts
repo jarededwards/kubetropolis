@@ -91,4 +91,31 @@ describe('knob → observable', () => {
     )
     expect(used.size).toBe(5) // spread-lite puts one on each
   })
+
+  /* -- M6 traffic knobs -- */
+
+  function servedAfterRush(knobs: Parameters<typeof mkSim>[0]): { served: number; cpu: number } {
+    const sim = mkSim({ reqPerSec: 0, ...knobs })
+    sim.apply(samples.deployment(3))
+    stepUntil(sim, (s) => s.vitals.podsReady === 3, 8000, 'ready')
+    sim.apply(samples.service())
+    stepUntil(sim, (s) => s.vitals.readyEndpoints === 3, 600, 'listed')
+    sim.setKnob('reqPerSec', (knobs as { reqPerSec?: number }).reqPerSec ?? 40)
+    for (let i = 0; i < 900; i++) sim.update(1 / 30)
+    return { served: sim.state.traffic.served, cpu: sim.state.vitals.cpuUsedM }
+  }
+
+  it('reqPerSec: more callers, more served, hotter substations', () => {
+    const quiet = servedAfterRush({ reqPerSec: 20 })
+    const rush = servedAfterRush({ reqPerSec: 200 })
+    expect(rush.served).toBeGreaterThan(quiet.served * 5)
+    expect(rush.cpu).toBeGreaterThan(quiet.cpu * 5)
+  })
+
+  it('reqCpuCostM: pricier requests draw more power at the same rate', () => {
+    const cheap = servedAfterRush({ reqPerSec: 100, reqCpuCostM: 5 })
+    const dear = servedAfterRush({ reqPerSec: 100, reqCpuCostM: 40 })
+    expect(Math.abs(cheap.served - dear.served)).toBeLessThan(cheap.served * 0.02)
+    expect(dear.cpu).toBeGreaterThan(cheap.cpu * 4)
+  })
 })

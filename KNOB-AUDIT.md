@@ -33,6 +33,10 @@ surface until wired.
 | `chaosRegistryOutage` | harbor fog, crane idle, ErrImagePull→ImagePullBackOff | chaos.test; scenario image-pull-storm; `m4-fog.png` |
 | `chaosNodeFail` | district blackout → Unknown + taints, pods unready | nodes.test (fidelity B3/B10) |
 
-Dormant (typed, mechanics land later): `reqPerSec`/`reqCpuCostM` (M6 traffic),
-`hpa*` (M8), `pdb*` (M8), `chaosEtcdSlow`/`chaosLeaderFlap` (partially wired:
-fsync chaos affects commits — etcd.test), `chaosQuotaLow` (M8).
+| `reqPerSec` | callers off the ramp; junction served counter; substation heat | knob-response.test; services.test |
+| `reqCpuCostM` | power drawn per served request (HPA's future metric) | knob-response.test |
+| `chaosReadinessFlake` (M6 extension) | flaking apps fail USERS in the same windows — misroute blips until the listing drops | services.test; scenario readiness-flake |
+
+Dormant (typed, mechanics land later): `hpa*` (M8), `pdb*` (M8),
+`chaosEtcdSlow`/`chaosLeaderFlap` (partially wired: fsync chaos affects
+commits — etcd.test), `chaosQuotaLow` (M8).

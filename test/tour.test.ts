@@ -21,7 +21,7 @@ const STEP = MODEL_STEP_SECONDS
 
 describe('tour chapters', () => {
   it('obey the chapter law: ≤45 model-s, real focus ids, wired actions', () => {
-    expect(CHAPTERS.length).toBe(6)
+    expect(CHAPTERS.length).toBe(7)
     const ids = new Set<string>()
     for (const ch of CHAPTERS) {
       expect(ids.has(ch.id)).toBe(false)
@@ -62,6 +62,11 @@ function runScriptedTour(): { log: string; snapshot: string } {
       if (a) sim.apply(a.mkCommand(sim.state))
     },
     focus() {},
+    setKnobs(knobs) {
+      for (const [key, value] of Object.entries(knobs)) {
+        sim.setKnob(key as keyof Knobs, value as Knobs[keyof Knobs])
+      }
+    },
     ensureDeployment() {
       let has = false
       for (const o of sim.state.etcd.objects.values()) {
@@ -200,7 +205,8 @@ describe('tour binder', () => {
       () => bus.emit('action:run', { kind: 'delete-pod' }), // ch3
       () => bus.emit('trace:open', { source: 'keyboard' }), // ch4
       () => handle.satisfy(), // ch5 rollback (button-equivalent)
-      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch6 → finishes
+      () => handle.satisfy(), // ch6 flake (button-equivalent)
+      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch7 → finishes
     ]
 
     let stopped = false
@@ -210,7 +216,7 @@ describe('tour binder', () => {
       drive(CHAPTERS[chapter].duration + 1.5)
       expect(handle.state().armed, `ch${chapter + 1} armed`).toBe(true)
       expect(card.visible).toBe(true)
-      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/6`)
+      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/7`)
       satisfactions[chapter]()
       tour.update(STEP, 0)
       if (chapter < CHAPTERS.length - 1) {

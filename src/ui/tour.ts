@@ -144,6 +144,37 @@ export const CHAPTERS: readonly TourChapter[] = [
     },
   },
   {
+    id: 'request',
+    title: 'CLOSED is not condemned',
+    body:
+      'A caller never asks for a Pod; it dials a number. The junction board is the '
+      + 'EndpointSlice — kept to whichever doors currently pass readiness — and each '
+      + 'district’s signage copies it after a courier’s delay. Watch a shop start failing '
+      + `its checks: after ${PR.failureThreshold} misses, ${PR.periodSeconds} model seconds `
+      + 'apart, the CLOSED sign flips, the listing drops, and traffic simply stops arriving. '
+      + 'No demolition. Liveness would have sent the wreckers — confusing the two probes is '
+      + 'the most expensive mix-up in Kubernetes.',
+    focus: 'service.junction',
+    duration: 32,
+    ensureDeployment: true,
+    knobs: { reqPerSec: 80 },
+    act: [[1, 'apply-service']],
+    at: [
+      [10, { chaosReadinessFlake: true }],
+      [26, { chaosReadinessFlake: false }],
+    ],
+    look: [
+      [12, 'service.directory'],
+      [18, 'node.b.signage'],
+      [24, 'service.junction'],
+    ],
+    yourTurn: {
+      prompt: 'Fail the probes yourself. Watch the sign, not the wreckers.',
+      arm: 'flake',
+      done: 'Zero restarts. The building was never in danger — only unlisted.',
+    },
+  },
+  {
     id: 'city',
     title: 'A healthy cluster is not quiet',
     body:
@@ -201,6 +232,11 @@ export function createTour(ctx: UiContext): UiModule {
       },
       focus(id: string): void {
         bus.emit('focus', { id })
+      },
+      setKnobs(knobs: Partial<Knobs>): void {
+        for (const [key, value] of Object.entries(knobs)) {
+          sim.setKnob(key as keyof Knobs, value as Knobs[keyof Knobs])
+        }
       },
       ensureDeployment(): void {
         let has = false
@@ -372,6 +408,22 @@ export function createTour(ctx: UiContext): UiModule {
           on: {
             click: () => {
               sim.apply(samples.rollback())
+              engine.satisfy('performed')
+              lastPaintKey = ''
+            },
+          },
+        }),
+      )
+    }
+    if (ch.yourTurn?.arm === 'flake' && engine.armed && !engine.turnDone) {
+      nodes.push(
+        el('button', {
+          class: 'pg-btn',
+          text: 'fail the probes',
+          title: 'chaosReadinessFlake — the tour hands every knob back when it ends',
+          on: {
+            click: () => {
+              sim.setKnob('chaosReadinessFlake', true)
               engine.satisfy('performed')
               lastPaintKey = ''
             },

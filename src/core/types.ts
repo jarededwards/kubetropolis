@@ -1418,6 +1418,8 @@ export interface TourChapter {
   act?: [number, ActionKind][]
   /** mid-chapter camera moves: [atSecond, componentId] */
   look?: [number, string][]
+  /** mid-chapter knob beats (the PG at-beat: flip a chaos toggle ON CAMERA) */
+  at?: [number, Partial<Knobs>][]
   /** stand up the demo Deployment before this chapter needs one */
   ensureDeployment?: boolean
   /** the chapter's closing prompt — the reader performs it, or skips */
@@ -1430,6 +1432,7 @@ export type TourArm =
   | 'picker'
   | 'scenarios'
   | 'rollback'
+  | 'flake'
   | { action: ActionKind }
 
 export interface TourYourTurn {
@@ -1454,6 +1457,8 @@ export interface ScenarioDef {
   duration: number
   /** guarantee the demo Deployment exists before the story starts */
   ensureDeployment?: boolean
+  /** guarantee the demo Service exists too (M6 traffic scenarios) */
+  ensureService?: boolean
   /** canned actions fired on schedule — the scenario acts ON CAMERA */
   actionAt?: [number, ActionKind][]
   /** scheduled knob changes (the PG at-beat analog): [atSecond, knobs] */

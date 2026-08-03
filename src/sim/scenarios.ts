@@ -143,6 +143,63 @@ export const SCENARIOS: readonly ScenarioDef[] = [
         + 'rollouts are why today was survivable.'],
     ],
   },
+  {
+    id: 'rollout-surge',
+    name: 'Rollout, three ways',
+    blurb: 'The same update under three pacing contracts — under live traffic.',
+    icon: '⇶',
+    knobs: { reqPerSec: 120 },
+    focus: 'service.directory',
+    duration: 200,
+    ensureDeployment: true,
+    ensureService: true,
+    actionAt: [
+      [12, 'set-image-v2'],
+    ],
+    knobsAt: [
+      [70, { maxSurgePct: 0, maxUnavailablePct: 50 }],
+      [130, { maxSurgePct: 100, maxUnavailablePct: 0 }],
+    ],
+    beats: [
+      [0, 'Rush hour, then a renovation',
+        `${CLAIM_VALUES.rollingUpdate.surgePct}% over budget, ${CLAIM_VALUES.rollingUpdate.unavailablePct}% short — the default contract. `
+        + 'Watch the directory board: the listed count dips and recovers as the wave walks.'],
+      [70, 'Surge zero',
+        'Never a building over budget — but half the doors may be dark at once. The board shows '
+        + 'what caution costs: capacity pays for it.'],
+      [130, 'Unavailable zero',
+        'A full second city for a moment, and the listed count never dips. Availability paid in '
+        + 'district headroom — look at what the Zoning Office had to find.'],
+      [185, 'Same v2, three prices',
+        'The template change was identical each time. The pacing contract decided who paid — '
+        + 'capacity, availability, or headroom.'],
+    ],
+  },
+  {
+    id: 'readiness-flake',
+    name: 'Readiness flake',
+    blurb: 'A shop keeps failing its checks. Traffic reroutes; the wreckers never come.',
+    icon: '⚑',
+    knobs: { reqPerSec: 100, chaosReadinessFlake: true },
+    focus: 'service.junction',
+    duration: 160,
+    ensureDeployment: true,
+    ensureService: true,
+    beats: [
+      [0, 'The checks start failing',
+        `An inspector visits every ${CLAIM_VALUES.probes.periodSeconds} model seconds. `
+        + `${CLAIM_VALUES.probes.failureThreshold} misses in a row and the CLOSED sign flips — `
+        + 'nothing else happens to the building.'],
+      [45, 'The listing drops',
+        'The directory files a smaller edition; each district signage copies it a courier later. '
+        + 'In that window a few callers still reach the closed door — count them on the junction '
+        + 'board. Then the traffic simply flows around.'],
+      [100, 'Zero restarts',
+        'Look at the restart counter: zero. Readiness unlists; liveness would have sent the '
+        + 'wreckers. The building was never in danger — only unlisted, and only until its checks '
+        + 'pass again.'],
+    ],
+  },
 ]
 
 export function scenarioById(id: string): ScenarioDef | undefined {
@@ -214,6 +271,9 @@ export function stepScenario(state: SimState, run: (cmd: Command) => void): void
     if (def.ensureDeployment && !hasDeployment(state, 'shopfront')) {
       run(samples.deployment(3))
     }
+    if (def.ensureService && !hasService(state)) {
+      run(samples.service())
+    }
   }
 
   const knobChanges = def.knobsAt ?? []
@@ -250,6 +310,13 @@ export function stepScenario(state: SimState, run: (cmd: Command) => void): void
 function hasDeployment(state: SimState, name: string): boolean {
   for (const o of state.etcd.objects.values()) {
     if (o.kind === 'Deployment' && o.name === name) return true
+  }
+  return false
+}
+
+function hasService(state: SimState): boolean {
+  for (const o of state.etcd.objects.values()) {
+    if (o.kind === 'Service') return true
   }
   return false
 }
