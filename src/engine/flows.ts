@@ -41,23 +41,21 @@ const MAX_BURST = 256
  * allowed a length-to-width ratio above the pod's own 1.28, so nothing on any
  * route can read as a dart no matter how fast it is travelling. */
 const KIND_ORDER: readonly FlowKind[] = [
-  'query',
-  'result',
-  'page_read',
-  'page_write',
-  'wal',
-  'wal_flush',
-  'archive',
-  'stream',
-  'ack',
-  'dead',
-  'fork',
-  'stat',
+  'apply',        // a manifest: a folded paper, slightly tall
+  'commit',       // a stamped write: a ledger slab, wide
+  'watchCourier', // a courier satchel
+  'workOrder',    // a desk's corrective paperwork
+  'bindWrite',    // zoning's placement slip
+  'imagePull',    // cargo: the widest thing on any road
+  'heartbeat',    // a small punctual ping
+  'evict',        // eviction paperwork (M8)
+  'request',      // a citizen (M6)
+  'refuel',       // the fuel run (M7)
 ]
-/** Index 12 is the "no kind given" default. */
+/** Index 10 is the "no kind given" default. */
 const KIND_DEFAULT = KIND_ORDER.length
-const KIND_W = Float32Array.from([1.05, 1.0, 1.4, 1.4, 1.0, 1.1, 1.2, 1.0, 0.75, 1.25, 1.1, 0.7, 1.0])
-const KIND_L = Float32Array.from([0.95, 0.92, 1.05, 1.05, 1.0, 1.05, 1.0, 1.0, 0.7, 0.9, 0.95, 0.65, 1.0])
+const KIND_W = Float32Array.from([1.0, 1.35, 1.05, 1.05, 1.0, 1.45, 0.7, 1.1, 0.95, 1.2, 1.0])
+const KIND_L = Float32Array.from([1.0, 1.05, 0.92, 0.95, 0.9, 1.1, 0.62, 0.95, 0.85, 1.0, 1.0])
 const KIND_INDEX = new Map<string, number>()
 for (let i = 0; i < KIND_ORDER.length; i++) KIND_INDEX.set(KIND_ORDER[i], i)
 

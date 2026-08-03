@@ -31,6 +31,21 @@ export const PRESENTED_TRACE_STAGES: readonly PresentedTraceStage[] = [
   { stop: 'done', label: 'RECEIPT' },
 ]
 
+/**
+ * The deployment variant files one paper and watches the inspectors file
+ * more: two desk stages slot in after the fan-out, before any concrete.
+ */
+export const PRESENTED_DEPLOYMENT_STAGES: readonly PresentedTraceStage[] = [
+  ...PRESENTED_TRACE_STAGES.slice(0, 4),
+  { stop: 'deploy_reconcile', label: 'HQ DESK' },
+  { stop: 'rs_reconcile', label: 'RS DESK' },
+  ...PRESENTED_TRACE_STAGES.slice(4),
+]
+
+export function presentedStages(action: string): readonly PresentedTraceStage[] {
+  return action === 'apply-deployment' ? PRESENTED_DEPLOYMENT_STAGES : PRESENTED_TRACE_STAGES
+}
+
 /** Statement timings run on the deliberately stretched model clock. */
 export function formatModelMilliseconds(milliseconds: number, fractionDigits = 0): string {
   return `${milliseconds.toFixed(fractionDigits)} ${CLAIM_VALUES.modelDuration.millisecondUnit}`

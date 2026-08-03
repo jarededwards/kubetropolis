@@ -382,6 +382,13 @@ export interface ImagePull {
   podUid: Uid
   totalMB: number
   doneMB: number
+  /** model time the pull was filed (serialized queue — waits behind others) */
+  queuedAt: number
+  /** set when the pull reaches the head of the queue and the crane engages */
+  startedAt?: number
+  /** layer arithmetic: cached base layers shrink the transfer (FIDELITY.md) */
+  layersTotal: number
+  layersHit: number
 }
 
 /**
@@ -474,6 +481,8 @@ export type TraceStop =
   | 'admission'
   | 'etcd_commit'
   | 'watch_fanout'
+  | 'deploy_reconcile'
+  | 'rs_reconcile'
   | 'sched_queue'
   | 'filter_score'
   | 'bind'
@@ -485,17 +494,93 @@ export type TraceStop =
 
 export type TracePlayback = 'step' | 'slow' | 'live'
 
+/** One scheduler verdict row, captured for the map-table stop. */
+export interface TraceFilterRow {
+  node: string
+  ok: boolean
+  failed?: string
+}
+export interface TraceScoreRow {
+  node: string
+  leastAllocated: number
+  imageLocality: number
+  spread: number
+}
+
+/**
+ * The flagship trace. Everything here is derived from SimState each tick by
+ * src/sim/trace.ts — captured counters persist after their transient sources
+ * (an admission receipt, a scheduler cycle) have moved on. Plain JSON so a
+ * snapshot carries a mid-flight trace faithfully.
+ */
 export interface TraceRecord {
   action: ActionKind
+  playback: TracePlayback
   stop: TraceStop
   /** bitmask of visited stops (core/model-helpers.traceStopBit) */
   visited: number
   startedAt: number
-  /** API round trips so far — the counter that IS the lesson */
+  /** model time the CURRENT stop was entered */
+  stopAt: number
+  /** API round trips committed for the traced family — the counter that IS the lesson */
   trips: number
   /** etcd revision at the most recent traced commit */
   rev: number
-  playback: TracePlayback
+  /** revision of the subject's own create commit */
+  commitRev: number
+  /** etcd log revision the derivation has consumed up to */
+  scannedRev: number
+  /** every uid in the traced family (subject, RS, pods) — trips count these */
+  familyUids: Uid[]
+  /** primary subject name (pod name, or deployment name for the variant) */
+  subject: string
+  subjectUid?: Uid
+  deploymentUid?: Uid
+  replicaSetUid?: Uid
+  /** the pod the camera follows (the subject pod, or the family's first) */
+  podUid?: Uid
+  podName?: string
+  /** the admission receipt — every default the manifest did not write */
+  mutations: string[]
+  /** fan-out */
+  watchersNotified: number
+  watchersTotal: number
+  maxBacklog: number
+  /** zoning */
+  queuePos: number
+  pendingPods: number
+  filter?: TraceFilterRow[]
+  score?: TraceScoreRow[]
+  chosen?: string
+  /** foreman */
+  kubeletGapRev: number
+  syncQueueDepth: number
+  /** harbor */
+  pullDoneMB: number
+  pullTotalMB: number
+  pullWaitSec: number
+  layersHit: number
+  layersTotal: number
+  pullSkipped: boolean
+  /** a pull record for the traced pod has been observed at least once */
+  pullSeen: boolean
+  /** probes */
+  restarts: number
+  readyOks: number
+  nextProbeInSec: number
+  /** directory */
+  serviceListed: boolean
+  /** deployment variant */
+  desiredReplicas: number
+  familyPods: number
+  siblingsAtStop: number
+  rsCreated: boolean
+  /** events emitted since the trace started */
+  eventsSince: number
+  /** step mode: sim auto-paused at a fresh stop, waiting for traceNext() */
+  autoPaused: boolean
+  /** knobs snapshot restored by endTrace() */
+  savedKnobs: Knobs
 }
 
 /* ---------------------------------------------------------------------------
@@ -677,7 +762,20 @@ export interface SimState {
   /** ring buffer, cap 500 — the newspaper */
   events: ClusterEvent[]
   trace: TraceRecord | null
+  /**
+   * Transient per-tick outbox of packet emissions; the facade flushes it to
+   * the bus 'flow' event and clears it at the end of every tick. Always empty
+   * at snapshot boundaries.
+   */
+  flowOutbox: FlowEmit[]
   vitals: Vitals
+}
+
+/** A sim-side request for packets on a named road (flushed to bus 'flow'). */
+export interface FlowEmit {
+  route: string
+  kind: FlowKind
+  count?: number
 }
 
 export interface SimApi {
@@ -687,6 +785,17 @@ export interface SimApi {
   /** the single command surface — kubectl is just another client */
   apply(command: Command): void
   setKnob<K extends keyof Knobs>(key: K, value: Knobs[K], source?: 'user'): void
+  /**
+   * Arm the flagship trace: snapshots knobs, applies the playback posture,
+   * enqueues the traced command. One trace at a time; arming replaces.
+   */
+  startTrace(action: ActionKind, playback: TracePlayback): void
+  /** Step mode: resume from an auto-pause and run to the next stop. */
+  traceNext(): void
+  /** Switch playback posture mid-trace (step ⇄ slow ⇄ live). */
+  setTracePlayback(playback: TracePlayback): void
+  /** Close the trace and hand every knob back exactly as it was found. */
+  endTrace(): void
   /** deterministic, JSON-stable snapshot for tests and save/restore */
   toSnapshot(): unknown
   reset(seed?: number): void
@@ -700,20 +809,18 @@ export interface SimApi {
  * Event bus.
  * -------------------------------------------------------------------------*/
 
-/** TV: flow vocabulary is re-cut when flows wire up with real routes (M2/M6). */
+/** The Kubernetes packet vocabulary — every moving thing in the city. */
 export type FlowKind =
-  | 'query'      // client → backend
-  | 'result'     // backend → client
-  | 'page_read'  // storage → shared buffers
-  | 'page_write' // shared buffers → storage
-  | 'wal'        // wal record
-  | 'wal_flush'
-  | 'archive'
-  | 'stream'     // replication
-  | 'ack'
-  | 'dead'       // dead tuples to the landfill
-  | 'fork'       // postmaster spawning
-  | 'stat'
+  | 'apply'        // a client's manifest travelling to the permit desk
+  | 'commit'       // a stamped write going down into the vault
+  | 'watchCourier' // one commit, N couriers, N distinct roads
+  | 'workOrder'    // a desk's corrective write, back through the permit hall
+  | 'bindWrite'    // zoning's placement decision — also just a write
+  | 'imagePull'    // cargo: harbor crane → district gate
+  | 'heartbeat'    // foreman lease renewal / status paperwork
+  | 'evict'        // eviction paperwork (M8)
+  | 'request'      // citizen traffic (M6)
+  | 'refuel'       // the lighthouse run (M7)
 
 /** A request to send N particles down a named route. */
 export interface FlowRequest {
@@ -751,8 +858,7 @@ export interface BusEvents {
   'tour:stop': Record<string, never>
   'tour:chapter': { index: number; total: number; title: string }
   'trace:open': { source?: 'button' | 'keyboard' }
-  /** M3 tightens statement to ActionKind once the trace UI lands */
-  'trace:run': { statement: string; playback: TracePlayback }
+  'trace:run': { statement: ActionKind; playback: TracePlayback }
   'panel:open': { panel: 'console' | 'inspector' | 'help'; item?: string }
   /** open one of the physical anatomy instruments, optionally for a component */
   'anatomy:open': { view: 'page' | 'directory'; id?: string }

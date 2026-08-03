@@ -10,6 +10,8 @@ export function traceStopBit(stop: TraceStop): number {
     case 'admission': return 1 << 1
     case 'etcd_commit': return 1 << 2
     case 'watch_fanout': return 1 << 3
+    case 'deploy_reconcile': return 1 << 12
+    case 'rs_reconcile': return 1 << 13
     case 'sched_queue': return 1 << 4
     case 'filter_score': return 1 << 5
     case 'bind': return 1 << 6
