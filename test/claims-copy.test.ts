@@ -19,7 +19,7 @@ import { TRACE_COPY } from '../src/ui/trace-copy'
 import { presentedStages } from '../src/core/trace-presentation'
 import type { TraceRecord } from '../src/core/types'
 
-const COPY_SOURCES = ['../src/ui/trace-copy.ts', '../src/sim/scenarios.ts']
+const COPY_SOURCES = ['../src/ui/trace-copy.ts', '../src/sim/scenarios.ts', '../src/ui/tour.ts']
 
 /**
  * The numbers that must never be retyped into copy, each with the CONTEXT
