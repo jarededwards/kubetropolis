@@ -1539,6 +1539,7 @@ export type TourArm =
   | 'scenarios'
   | 'rollback'
   | 'flake'
+  | 'operator'
   | { action: ActionKind }
 
 export interface TourYourTurn {

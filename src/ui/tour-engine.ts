@@ -9,12 +9,13 @@
  * this module owns WHAT happens WHEN.
  */
 
-import type { ActionKind, Knobs, TourChapter } from '../core/types'
+import type { ActionKind, Command, Knobs, TourChapter } from '../core/types'
 
 export type TourEngineEvent =
   | { t: number; type: 'start'; index: number }
   | { t: number; type: 'enter'; index: number; id: string }
   | { t: number; type: 'act'; kind: ActionKind }
+  | { t: number; type: 'command'; kind: Command['kind'] }
   | { t: number; type: 'look'; id: string }
   | { t: number; type: 'knobs'; keys: string[] }
   | { t: number; type: 'armed'; index: number }
@@ -25,6 +26,8 @@ export interface TourEngineDeps {
   /** model seconds — sim.state.now */
   now(): number
   applyAction(kind: ActionKind): void
+  /** commandAt beats: acts that are not ActionKinds (SetOperator etc., M7) */
+  applyCommand(command: Command): void
   focus(id: string): void
   /** apply chapter knobs / at-beats (restored by the binder on tour end) */
   setKnobs(knobs: Partial<Knobs>): void
@@ -63,6 +66,7 @@ export function createTourEngine(chapters: readonly TourChapter[], deps: TourEng
   let actIdx = 0
   let lookIdx = 0
   let atIdx = 0
+  let cmdIdx = 0
   let armed = false
   let turnDone = false
   let turnSkipped = false
@@ -76,6 +80,7 @@ export function createTourEngine(chapters: readonly TourChapter[], deps: TourEng
     actIdx = 0
     lookIdx = 0
     atIdx = 0
+    cmdIdx = 0
     armed = false
     turnDone = false
     turnSkipped = false
@@ -145,6 +150,13 @@ export function createTourEngine(chapters: readonly TourChapter[], deps: TourEng
         atIdx += 1
         deps.setKnobs(knobs)
         emit({ t: now(), type: 'knobs', keys: Object.keys(knobs).sort() })
+      }
+      const cmds = ch.commandAt ?? []
+      while (cmdIdx < cmds.length && cmds[cmdIdx][0] <= t) {
+        const [, command] = cmds[cmdIdx]
+        cmdIdx += 1
+        deps.applyCommand(command)
+        emit({ t: now(), type: 'command', kind: command.kind })
       }
       if (!armed && t >= ch.duration) {
         armed = true
