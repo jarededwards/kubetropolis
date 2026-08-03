@@ -112,8 +112,11 @@ async function evaluate(expression) {
   return response.result.value
 }
 
+/* SwiftShader on small CI runners can take minutes to first frame. */
+const HUD_ATTEMPTS = Math.max(1, Math.ceil(Number(process.env.HUD_WAIT_MS ?? 80_000) / 500))
+
 async function waitForHud() {
-  for (let attempt = 0; attempt < 160; attempt++) {
+  for (let attempt = 0; attempt < HUD_ATTEMPTS; attempt++) {
     try {
       if (
         await evaluate(
@@ -126,11 +129,33 @@ async function waitForHud() {
     }
     await sleep(500)
   }
-  throw new Error('HUD never appeared')
+  let state = 'page unreadable'
+  try {
+    state = String(
+      await evaluate(
+        "JSON.stringify({ boot: document.getElementById('boot')?.className ?? 'missing', status: document.getElementById('boot-status')?.textContent ?? '', handle: typeof window.KUBETROPOLIS })",
+      ),
+    )
+  } catch {}
+  throw new Error(`HUD never appeared after ${HUD_ATTEMPTS * 0.5}s — ${state}`)
 }
 
 function fail(context, message) {
   failures.push(`[${context}] ${message}`)
+}
+
+/* Fail fast and clearly when nothing serves the app — a dead URL otherwise
+ * burns the whole HUD wait and reports a misleading "HUD never appeared". */
+{
+  let up = false
+  for (let i = 0; i < 20 && !up; i++) {
+    try {
+      up = (await fetch(APP_URL)).ok
+    } catch {
+      await sleep(500)
+    }
+  }
+  if (!up) throw new Error(`nothing serving ${APP_URL} — run \`npm run preview\` first or pass a URL`)
 }
 
 await send('Page.enable')
