@@ -184,12 +184,36 @@ export function createHarbor(ctx: WorldContext): WorldModule {
   beamPivot.position.y = TOWER_H + 2.7
   beamPivot.visible = false
   lighthouse.add(beamPivot)
-  const beamGeo = theme.box(46, 0.5, 1.6)
+  // Soft falloff along the blade so the beam reads as rotating LIGHT, not a
+  // rod skewering the tower (the day theme especially). A tiny gradient
+  // alphaMap does it: bright at the lamp, gone at the tip.
+  const beamFade = (() => {
+    const c = document.createElement('canvas')
+    c.width = 64
+    c.height = 4
+    const g = c.getContext('2d')
+    if (g) {
+      const grad = g.createLinearGradient(0, 0, 64, 0)
+      grad.addColorStop(0, '#ffffff')
+      grad.addColorStop(0.55, '#9a9a9a')
+      grad.addColorStop(1, '#000000')
+      g.fillStyle = grad
+      g.fillRect(0, 0, 64, 4)
+    }
+    const tex = new THREE.CanvasTexture(c)
+    tex.name = 'Kubetropolis.beam.falloff'
+    return tex
+  })()
+  const beamGeo = new THREE.BoxGeometry(46, 0.5, 1.6)
   for (const dir of [1, -1]) {
-    const blade = new THREE.Mesh(beamGeo, theme.neon(COLOR.crd, 1.35))
+    const mat = theme.neon(COLOR.crd, 1.35) as THREE.MeshBasicMaterial
+    mat.transparent = true
+    mat.opacity = 0.8
+    mat.alphaMap = beamFade
+    mat.depthWrite = false
+    const blade = new THREE.Mesh(beamGeo, mat)
     blade.position.x = dir * 24
-    ;(blade.material as THREE.MeshBasicMaterial).transparent = true
-    ;(blade.material as THREE.MeshBasicMaterial).opacity = 0.55
+    if (dir === -1) blade.rotation.y = Math.PI
     blade.raycast = () => {}
     beamPivot.add(blade)
   }
