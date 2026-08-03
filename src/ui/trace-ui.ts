@@ -13,6 +13,7 @@
 import { presentedStages } from '../core/trace-presentation'
 import type { TracePlayback, TraceRecord, TraceStop } from '../core/types'
 import { traceStopBit } from '../core/model-helpers'
+import { samples } from '../sim/model'
 import { narration } from './narration'
 import { traceCopyFor, traceFocusId } from './trace-copy'
 import type { UiContext, UiModule } from './uikit'
@@ -78,6 +79,22 @@ export function createTraceUi(ctx: UiContext): UiModule {
         sim.setKnob('preStopSleepSec', fixSec, 'user')
         bus.emit('toast', { text: `preStopSleepSec → ${fixSec} — re-running the delete`, kind: 'info' })
         start('delete-pod', playback)
+      },
+    },
+  })
+
+  // The lighthouse rail's hold: the OPERATOR stop waits forever while the
+  // shack is dark — which is true — and staffing it IS the fix. The button
+  // resumes the world so the rail can ride construction to the beacon.
+  const staffBtn = el('button', {
+    class: 'pg-btn tour-btn tour-btn--fix',
+    text: 'staff the shack',
+    title: 'Start the operator — its watch begins, and so does everything else',
+    on: {
+      click: () => {
+        sim.apply(samples.setOperator(true))
+        bus.emit('toast', { text: 'operator staffed — its courier is on the shore road', kind: 'info' })
+        if (sim.state.trace?.playback === 'step') sim.traceNext()
       },
     },
   })
@@ -178,14 +195,18 @@ export function createTraceUi(ctx: UiContext): UiModule {
     lastLine = line
 
     // The delete rail's closing affordance: only when the race had victims.
+    // The lighthouse rail's: only while the OPERATOR stop holds unstaffed.
     const offerFix =
       t.action === 'delete-pod' && t.stop === 'done' && t.trafficLive && t.misroutedSince > 0
       && t.savedKnobs.preStopSleepSec < t.suggestedPreStopSec
-    if (offerFix && !fixShown) {
+    const offerStaff =
+      t.action === 'apply-lighthouse' && t.stop === 'operator' && !t.operatorStaffed
+    const contextBtn = offerFix ? fixBtn : offerStaff ? staffBtn : null
+    if (contextBtn && !fixShown) {
       fixShown = true
-      fixBtn.textContent = `try the fix: preStop ${t.suggestedPreStopSec}s`
-      card.setTransport([prevBtn, ...modeBtns, fixBtn, nextBtn, closeBtn])
-    } else if (!offerFix && fixShown) {
+      if (offerFix) fixBtn.textContent = `try the fix: preStop ${t.suggestedPreStopSec}s`
+      card.setTransport([prevBtn, ...modeBtns, contextBtn, nextBtn, closeBtn])
+    } else if (!contextBtn && fixShown) {
       fixShown = false
       card.setTransport([prevBtn, ...modeBtns, nextBtn, closeBtn])
     }

@@ -21,7 +21,7 @@ const STEP = MODEL_STEP_SECONDS
 
 describe('tour chapters', () => {
   it('obey the chapter law: ≤45 model-s, real focus ids, wired actions', () => {
-    expect(CHAPTERS.length).toBe(7)
+    expect(CHAPTERS.length).toBe(8)
     const ids = new Set<string>()
     for (const ch of CHAPTERS) {
       expect(ids.has(ch.id)).toBe(false)
@@ -35,6 +35,10 @@ describe('tour chapters', () => {
         expect(at).toBeGreaterThanOrEqual(0)
         expect(at).toBeLessThanOrEqual(ch.duration)
         expect(id in ANCHOR, `look ${id}`).toBe(true)
+      }
+      for (const [at] of ch.commandAt ?? []) {
+        expect(at).toBeGreaterThanOrEqual(0)
+        expect(at).toBeLessThanOrEqual(ch.duration)
       }
       for (const [at, kind] of ch.act ?? []) {
         expect(at).toBeGreaterThanOrEqual(0)
@@ -60,6 +64,9 @@ function runScriptedTour(): { log: string; snapshot: string } {
     applyAction(kind) {
       const a = actionFor(kind)
       if (a) sim.apply(a.mkCommand(sim.state))
+    },
+    applyCommand(command) {
+      sim.apply(command)
     },
     focus() {},
     setKnobs(knobs) {
@@ -108,6 +115,10 @@ describe('tour engine', () => {
     expect(acted).toContain('apply-pod')
     expect(acted).toContain('delete-pod')
     expect(acted).toContain('scale-6')
+    expect(acted).toContain('apply-crd')
+    expect(acted).toContain('apply-lighthouse')
+    const commanded = parsed.filter((e) => e.type === 'command').map((e) => e.kind)
+    expect(commanded).toContain('SetOperator')
     expect(acted).toContain('set-image-v2')
     const stop = parsed.find((e) => e.type === 'stop')
     expect(stop?.reason).toBe('finished')
@@ -206,7 +217,8 @@ describe('tour binder', () => {
       () => bus.emit('trace:open', { source: 'keyboard' }), // ch4
       () => handle.satisfy(), // ch5 rollback (button-equivalent)
       () => handle.satisfy(), // ch6 flake (button-equivalent)
-      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch7 → finishes
+      () => handle.satisfy(), // ch7 operator unstaff (button-equivalent)
+      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch8 → finishes
     ]
 
     let stopped = false
@@ -216,7 +228,7 @@ describe('tour binder', () => {
       drive(CHAPTERS[chapter].duration + 1.5)
       expect(handle.state().armed, `ch${chapter + 1} armed`).toBe(true)
       expect(card.visible).toBe(true)
-      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/7`)
+      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/8`)
       satisfactions[chapter]()
       tour.update(STEP, 0)
       if (chapter < CHAPTERS.length - 1) {

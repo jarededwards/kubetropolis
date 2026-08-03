@@ -176,6 +176,58 @@ export const SCENARIOS: readonly ScenarioDef[] = [
     ],
   },
   {
+    id: 'paper-law',
+    name: 'Paper law',
+    blurb: 'Pass the law, file the permit, staff nobody. Watch how much nothing happens.',
+    icon: '¶',
+    knobs: {},
+    focus: 'harbor.lighthouse',
+    duration: 0,
+    ensureOperatorOff: true,
+    actionAt: [
+      [2, 'apply-crd'],
+      [8, 'apply-lighthouse'],
+    ],
+    beats: [
+      [0, 'Stored, revisioned, real',
+        'The council passes the law and the permit is filed. City Hall opens a counter '
+        + 'window; the vault gains a row. Every proper channel has done its proper thing.'],
+      [20, 'The breakwater is dark',
+        'No office subscribes to Lighthouses. The couriers went out; nobody was waiting at '
+        + 'the end of any road. The row does not age, does not retry, does not complain — it '
+        + 'simply waits, forever if you let it.'],
+      [45, 'Staff the shack',
+        'An operator is an ordinary process holding a watch. The moment one runs, the row '
+        + 'becomes a building — and stays one only as long as the process stays up.'],
+    ],
+    decision: {
+      revealAt: 60,
+      choices: [
+        {
+          id: 'staff',
+          label: 'Staff the shack',
+          hint: 'Start the operator — its watch begins',
+          effect: {
+            command: samples.setOperator(true),
+            consequence:
+              'The shack lights, the courier walks the shore road, the tower rises and '
+              + 'ignites — and the operator keeps it burning from here on.',
+          },
+        },
+        {
+          id: 'leave-dark',
+          label: 'Leave it dark',
+          hint: 'Honest: nothing will ever happen',
+          effect: {
+            consequence:
+              'The row will outlive your patience. Nothing in the control plane ages it, '
+              + 'retries it, or mourns it — a law with no inspector is paper.',
+          },
+        },
+      ],
+    },
+  },
+  {
     id: 'readiness-flake',
     name: 'Readiness flake',
     blurb: 'A shop keeps failing its checks. Traffic reroutes; the wreckers never come.',
@@ -273,6 +325,9 @@ export function stepScenario(state: SimState, run: (cmd: Command) => void): void
     }
     if (def.ensureService && !hasService(state)) {
       run(samples.service())
+    }
+    if (def.ensureOperatorOff && state.operatorRunning) {
+      run(samples.setOperator(false))
     }
   }
 

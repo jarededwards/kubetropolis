@@ -1,4 +1,5 @@
 import type { ComponentDef } from '../core/types'
+import { samples } from '../sim/model'
 import type { UiContext, UiModule } from './uikit'
 import { el, setText } from './uikit'
 
@@ -27,6 +28,18 @@ export function createInspector(ctx: UiContext): UiModule {
     text: 'fly to',
     on: { click: () => current && bus.emit('focus', { id: current.id }) },
   })
+  // The shack is the one component with a switch: an operator is a PROCESS,
+  // and this is where you start or stop it (M7). The button is the lesson.
+  const staffBtn = el('button', {
+    class: 'pg-btn',
+    text: 'staff',
+    style: { display: 'none' },
+    on: {
+      click: () => {
+        sim.apply(samples.setOperator(!sim.state.operatorRunning))
+      },
+    },
+  })
   const closeBtn = el('button', {
     class: 'pg-btn pg-btn--ghost',
     text: 'close',
@@ -40,7 +53,7 @@ export function createInspector(ctx: UiContext): UiModule {
     name,
     role,
     readout,
-    el('div', { class: 'pgc-fly' }, flyBtn),
+    el('div', { class: 'pgc-fly' }, flyBtn, staffBtn),
   )
   host.appendChild(card)
 
@@ -64,6 +77,9 @@ export function createInspector(ctx: UiContext): UiModule {
   function update(): void {
     if (!current) return
     setText(readout, current.readout ? current.readout(sim.state) : '')
+    const isShack = current.id === 'operator.shack'
+    staffBtn.style.display = isShack ? '' : 'none'
+    if (isShack) setText(staffBtn, sim.state.operatorRunning ? 'unstaff' : 'staff')
   }
 
   return {

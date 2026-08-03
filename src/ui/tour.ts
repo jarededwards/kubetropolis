@@ -14,7 +14,7 @@
  */
 
 import { CLAIM_VALUES } from '../core/claims'
-import type { Knobs, TourChapter } from '../core/types'
+import type { Command, Knobs, TourChapter } from '../core/types'
 import { actionFor } from '../sim/actions'
 import { samples } from '../sim/samples'
 import { narration } from './narration'
@@ -175,6 +175,34 @@ export const CHAPTERS: readonly TourChapter[] = [
     },
   },
   {
+    id: 'operator',
+    title: 'A law with no inspector is paper',
+    body:
+      'The council can pass a law for a building Kubernetes has never heard of. The '
+      + 'CustomResourceDefinition teaches City Hall a new form — watch a counter window open '
+      + '— and the Lighthouse manifest is then accepted, stored, and revisioned like anything '
+      + 'else. And nothing happens, because no office holds that watch. Built-in kinds come '
+      + 'with inspectors; your kinds get one only if you run it.',
+    focus: 'cityhall.permitdesk',
+    duration: 38,
+    act: [
+      [3, 'apply-crd'],
+      [10, 'apply-lighthouse'],
+    ],
+    commandAt: [[24, { kind: 'SetOperator', running: true }]],
+    look: [
+      [7, 'cityhall.permitdesk'],
+      [14, 'harbor.lighthouse'],
+      [23, 'operator.shack'],
+      [30, 'harbor.lighthouse'],
+    ],
+    yourTurn: {
+      prompt: 'Unstaff the shack — and watch the fuel gauge.',
+      arm: 'operator',
+      done: 'Drift always wins eventually. Reconciliation is not an event; it is an occupation.',
+    },
+  },
+  {
     id: 'city',
     title: 'A healthy cluster is not quiet',
     body:
@@ -229,6 +257,9 @@ export function createTour(ctx: UiContext): UiModule {
       applyAction(kind: Parameters<typeof actionFor>[0]): void {
         const action = actionFor(kind)
         if (action) sim.apply(action.mkCommand(sim.state))
+      },
+      applyCommand(command: Command): void {
+        sim.apply(command)
       },
       focus(id: string): void {
         bus.emit('focus', { id })
@@ -424,6 +455,22 @@ export function createTour(ctx: UiContext): UiModule {
           on: {
             click: () => {
               sim.setKnob('chaosReadinessFlake', true)
+              engine.satisfy('performed')
+              lastPaintKey = ''
+            },
+          },
+        }),
+      )
+    }
+    if (ch.yourTurn?.arm === 'operator' && engine.armed && !engine.turnDone) {
+      nodes.push(
+        el('button', {
+          class: 'pg-btn',
+          text: 'unstaff the shack',
+          title: 'Stop the operator — drift takes over from here',
+          on: {
+            click: () => {
+              sim.apply(samples.setOperator(false))
               engine.satisfy('performed')
               lastPaintKey = ''
             },
