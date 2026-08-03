@@ -62,17 +62,23 @@ describe('controller desks — deployment and replicaset', () => {
     expect(survivors).toEqual(byAge.slice(0, 2))
   })
 
-  it('scaling is not a rollout: generation stands still, no second contract opens', () => {
+  it('scaling is not a rollout: generation bumps, the hash does not, one contract stays', () => {
+    // Real semantics (fidelity B2): the server bumps generation on ANY spec
+    // change — a scale included. What distinguishes a scale from a rollout is
+    // the pod template: same template ⇒ same pod-template-hash ⇒ no second
+    // ReplicaSet and no new revision.
     const sim = mkSim()
     sim.apply(samples.deployment(2))
     stepUntil(sim, (s) => s.vitals.podsReady === 2, 2400, 'ready')
     const dep0 = [...sim.state.etcd.objects.values()].find((o) => o.kind === 'Deployment')!
     const gen0 = dep0.generation
+    const hash0 = replicaSets(sim)[0].spec.podTemplateHash
     sim.apply(samples.scale(4))
     stepUntil(sim, (s) => s.vitals.podsReady === 4, 2400, 'scaled up')
     const dep1 = [...sim.state.etcd.objects.values()].find((o) => o.kind === 'Deployment')!
-    expect(dep1.generation).toBe(gen0)
+    expect(dep1.generation).toBeGreaterThan(gen0)
     expect(replicaSets(sim).length).toBe(1)
+    expect(replicaSets(sim)[0].spec.podTemplateHash).toBe(hash0)
   })
 
   it('desks never touch the street directly: every change is an API write', () => {

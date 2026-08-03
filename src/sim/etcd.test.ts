@@ -50,14 +50,40 @@ describe('etcd — the vault', () => {
     expect(deliveredAt).toBeGreaterThanOrEqual(8)
   })
 
-  it('compaction trims the log and flags only genuinely lagging watchers', () => {
+  it('compaction retains one interval of history and spares healthy watchers', () => {
     const sim = mkSim()
     sim.apply(samples.deployment(2))
     stepUntil(sim, (s) => s.vitals.podsReady === 2, 2400, 'steady state')
-    // run past the 300 model-second compaction sweep
-    stepUntil(sim, (s) => s.etcd.compactedRevision > 0, 9200, 'compaction')
-    expect(sim.state.etcd.log.length).toBe(0)
-    // Healthy watchers drained long ago — nobody should be forced to relist.
+    // Two sweeps: the first records the interval revision, the second compacts
+    // to it (kube-apiserver compacts to the interval-AGO revision, not now).
+    stepUntil(sim, (s) => s.etcd.compactedRevision > 0, 20000, 'second sweep compacts')
+    expect(sim.state.etcd.compactedRevision).toBeLessThan(sim.state.etcd.lastIntervalRevision)
+    expect(sim.state.etcd.log.every((r) => r.rev > sim.state.etcd.compactedRevision)).toBe(true)
+    // Healthy watchers bookmark every minute — far inside the 300s interval —
+    // so nobody is forced to relist.
     expect(sim.state.api.watchers.every((w) => !w.needsRelist)).toBe(true)
+  })
+
+  it('a watcher that fell behind compaction relists — after a real LIST delay', () => {
+    const sim = mkSim()
+    sim.apply(samples.deployment(2))
+    stepUntil(sim, (s) => s.vitals.podsReady === 2, 2400, 'steady')
+    // Wedge a watcher into the past, behind the (future) compacted revision.
+    const w = sim.state.api.watchers.find((x) => x.subscriber === 'sched')!
+    stepUntil(sim, (s) => s.etcd.compactedRevision > 0, 20000, 'compacted')
+    w.sentRev = sim.state.etcd.compactedRevision - 1
+    w.backlog = []
+    w.nextBookmarkAt = sim.state.now + 3600 // no bookmark rescue
+    stepUntil(sim, (s) => {
+      void s
+      return w.needsRelist || w.sentRev >= sim.state.etcd.compactedRevision
+    }, 12000, 'flagged')
+    // The relist is not free: it completes only after its LIST latency.
+    if (w.needsRelist) {
+      const flaggedAt = sim.state.now
+      stepUntil(sim, () => !w.needsRelist, 600, 'relisted')
+      expect(sim.state.now).toBeGreaterThan(flaggedAt)
+      expect(w.sentRev).toBeGreaterThanOrEqual(sim.state.etcd.compactedRevision)
+    }
   })
 })
