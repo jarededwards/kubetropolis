@@ -29,6 +29,7 @@ export function createActionPicker(ctx: UiContext): UiModule {
           on: {
             click: () => {
               hide()
+              bus.emit('action:run', { kind: a.kind })
               if (a.traceable) {
                 bus.emit('trace:run', { statement: a.kind, playback: 'step' })
                 return

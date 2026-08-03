@@ -892,6 +892,8 @@ export interface BusEvents {
   'scenario:open': { source?: 'button' | 'keyboard' }
   'trace:open': { source?: 'button' | 'keyboard' }
   'trace:run': { statement: ActionKind; playback: TracePlayback }
+  /** any canned action executed from the picker (traced or not) */
+  'action:run': { kind: ActionKind }
   'panel:open': { panel: 'console' | 'inspector' | 'help'; item?: string }
   /** open one of the physical anatomy instruments, optionally for a component */
   'anatomy:open': { view: 'page' | 'directory'; id?: string }
@@ -1269,14 +1271,38 @@ export interface TourChapter {
   focus?: string
   /** or an explicit camera move */
   camera?: FocusSpec
-  /** wall-clock seconds this chapter lasts */
+  /**
+   * MODEL seconds of narration. The sim clock drives the tour, so pausing
+   * the city pauses the chapter. ≤ 45 by law (CLAUDE.md: UI restraint).
+   */
   duration: number
-  /** knob changes applied on entry */
+  /** knob changes applied on entry (every knob is restored when the tour ends) */
   knobs?: Partial<Knobs>
   /** scenario to trigger on entry */
   scenario?: string | null
   /** mid-chapter canned actions fired ON CAMERA — the anti-passivity answer */
   act?: [number, ActionKind][]
+  /** mid-chapter camera moves: [atSecond, componentId] */
+  look?: [number, string][]
+  /** stand up the demo Deployment before this chapter needs one */
+  ensureDeployment?: boolean
+  /** the chapter's closing prompt — the reader performs it, or skips */
+  yourTurn?: TourYourTurn
+}
+
+/** What satisfies a chapter's "your turn": a UI act the reader performs. */
+export type TourArm =
+  | 'select'
+  | 'picker'
+  | 'scenarios'
+  | 'rollback'
+  | { action: ActionKind }
+
+export interface TourYourTurn {
+  prompt: string
+  arm: TourArm
+  /** one-line confirmation once performed */
+  done?: string
 }
 
 export type ScenarioChoiceId = string

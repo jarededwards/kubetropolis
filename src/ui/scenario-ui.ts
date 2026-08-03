@@ -9,6 +9,7 @@
 
 import { SCENARIOS, scenarioById } from '../sim/scenarios'
 import { narration } from './narration'
+import { tourIsActive } from './tour'
 import type { UiContext, UiModule } from './uikit'
 import { el, setText } from './uikit'
 
@@ -117,8 +118,9 @@ export function createScenarioUi(ctx: UiContext): UiModule {
     const run = sim.state.scenarioRun
     const card = narration()
 
-    // A live trace owns the card — never speak over it.
-    if (sim.state.trace) return
+    // A live trace owns the card — never speak over it. The tour outranks
+    // scenarios too: its beats resume from state when the tour ends.
+    if (sim.state.trace || tourIsActive()) return
 
     if (!run) {
       if (cardOwned) {

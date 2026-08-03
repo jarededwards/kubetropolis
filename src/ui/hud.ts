@@ -34,10 +34,16 @@ export function createHud(ctx: UiContext): UiModule {
     title: 'Break the city on purpose (S)',
     on: { click: () => bus.emit('scenario:open', { source: 'button' }) },
   })
+  const tourBtn = el('button', {
+    class: 'pg-btn pg-btn--ghost',
+    text: 'tour',
+    title: 'Take the guided tour (T)',
+    on: { click: () => bus.emit('tour:start', { source: 'button' }) },
+  })
   const themeBtn = el('button', {
     class: 'pg-btn pg-btn--ghost',
     text: 'day/night',
-    title: 'Toggle day and night (T is reserved for the tour)',
+    title: 'Toggle day and night (T starts the tour)',
     on: { click: () => bus.emit('ui:theme-toggle', {}) },
   })
   const helpBtn = el('button', {
@@ -84,6 +90,8 @@ export function createHud(ctx: UiContext): UiModule {
       bus.emit('ui:palette', { open: true })
     } else if (e.key === 'h' || e.key === 'H' || e.key === '?') {
       bus.emit('ui:help', { open: true })
+    } else if (e.key === 't' || e.key === 'T') {
+      bus.emit('tour:start', { source: 'keyboard' })
     } else if (e.key === 'Escape') {
       // Offer Escape to overlays first; if someone handles it, stop there.
       const payload = { handled: false }

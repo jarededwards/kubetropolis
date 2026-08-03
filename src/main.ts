@@ -56,6 +56,7 @@ import { createHud } from './ui/hud'
 import { createInspector } from './ui/panel'
 import { createScenarioUi } from './ui/scenario-ui'
 import { createSearch } from './ui/search'
+import { createTour } from './ui/tour'
 import { createTraceUi } from './ui/trace-ui'
 import type { UiContext, UiModule } from './ui/uikit'
 
@@ -173,6 +174,7 @@ async function boot(): Promise<void> {
     createHelp(uiCtx),
     createActionPicker(uiCtx),
     createScenarioUi(uiCtx),
+    createTour(uiCtx),
     createTraceUi(uiCtx),
   ]
 
