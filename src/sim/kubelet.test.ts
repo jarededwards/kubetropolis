@@ -88,7 +88,7 @@ describe('kubelet — the foreman', () => {
     expect(sim.state.events.some((e) => e.reason === 'BackOff')).toBe(true)
   })
 
-  it('OOM is arithmetic: crossing the limit exits 137 with the OOMKilled reason', () => {
+  it('OOM is arithmetic: exit 137, lastExitReason OOMKilled, waiting reason CrashLoopBackOff', () => {
     const sim = mkSim({ nodeCount: 1 })
     sim.apply(samples.pod('leaky'))
     stepUntil(sim, (s) => podNamed(s, 'leaky')?.status.phase === 'Running', 900, 'running')
@@ -97,8 +97,12 @@ describe('kubelet — the foreman', () => {
     const pod = podNamed(sim.state, 'leaky')! as PodObj
     pod.status.container.memMi = pod.spec.limitMemMi + 1
     stepUntil(sim, (s) => podNamed(s, 'leaky')?.status.container.exitCode === 137, 600, 'OOM kill')
-    expect(podNamed(sim.state, 'leaky')!.status.container.reason).toBe('OOMKilled')
-    expect(podNamed(sim.state, 'leaky')!.status.container.restartCount).toBe(1)
+    // The kubectl flicker (fidelity A6): WHY the last run died is OOMKilled;
+    // WHAT the container is doing now is CrashLoopBackOff.
+    const c = podNamed(sim.state, 'leaky')!.status.container
+    expect(c.lastExitReason).toBe('OOMKilled')
+    expect(c.reason).toBe('CrashLoopBackOff')
+    expect(c.restartCount).toBe(1)
   })
 
   it('graceful termination: preStop, SIGTERM, then the final paperwork removes the row', () => {

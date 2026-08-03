@@ -49,19 +49,23 @@ export function stepKubelets(state: SimState, dt: number): void {
  * -------------------------------------------------------------------------*/
 
 function stepPulls(state: SimState, node: NodeSim, dt: number): void {
-  const pull = node.pulls[0]
-  if (!pull) return
+  // serializeImagePulls (claims: images.pullSerialized): one crane trip at a
+  // time per district — everything else waits in the queue.
+  const concurrent = CLAIM_VALUES.imagePull.serialized ? 1 : node.pulls.length
   const rate = state.knobs.chaosRegistryOutage ? 0 : state.knobs.registryMBps
-  pull.doneMB += rate * dt
-  if (pull.doneMB < pull.totalMB) return
-
-  node.pulls.shift()
-  node.imageCache.add(pull.image)
-  pushEvent(state, 'Normal', 'Pulled', pull.image, `cargo landed at ${node.id}`)
-
-  const pod = getPod(state, pull.podUid)
-  if (pod && pod.spec.nodeName === node.id && !pod.deletionTimestamp) {
-    beginCreate(state, node, pod)
+  const finished: typeof node.pulls = []
+  for (const pull of node.pulls.slice(0, concurrent)) {
+    pull.doneMB += rate * dt
+    if (pull.doneMB >= pull.totalMB) finished.push(pull)
+  }
+  for (const pull of finished) {
+    node.pulls.splice(node.pulls.indexOf(pull), 1)
+    node.imageCache.add(pull.image)
+    pushEvent(state, 'Normal', 'Pulled', pull.image, `cargo landed at ${node.id}`)
+    const pod = getPod(state, pull.podUid)
+    if (pod && pod.spec.nodeName === node.id && !pod.deletionTimestamp) {
+      beginCreate(state, node, pod)
+    }
   }
 }
 
@@ -257,7 +261,11 @@ function containerExited(
   publishStatus(state, node, pod, (p) => {
     p.status.ready = false
     p.status.container.state = 'waiting'
-    p.status.container.reason = reason === 'OOMKilled' ? 'OOMKilled' : 'CrashLoopBackOff'
+    // A6: the WAITING reason is CrashLoopBackOff for every restart loop; WHY
+    // the last run ended lives in lastExitReason — which is why kubectl
+    // flickers OOMKilled and then settles on CrashLoopBackOff.
+    p.status.container.reason = 'CrashLoopBackOff'
+    p.status.container.lastExitReason = reason
     p.status.container.restartCount += 1
     p.status.container.exitCode = exitCode
     p.status.container.backoffSec = nextBackoff
@@ -268,7 +276,7 @@ function containerExited(
     'Warning',
     'BackOff',
     pod.name,
-    `container exited (${exitCode}); restarting in ${nextBackoff}s`,
+    `container exited (${exitCode}${reason === 'OOMKilled' ? ', OOMKilled' : ''}); restarting in ${nextBackoff}s`,
   )
 }
 
@@ -279,9 +287,14 @@ function containerExited(
 function beginTermination(state: SimState, node: NodeSim, pod: PodObj, rt: LocalPodRuntime): void {
   if (rt.sigtermAt !== undefined) return
   const t0 = pod.deletionTimestamp ?? state.now
+  // B1: the grace countdown starts BEFORE preStop — the hook delays SIGTERM
+  // but never extends the deadline. A preStop still running at expiry earns
+  // exactly one 2-second extension. "A preStop sleep buys me extra time" is
+  // the misconception; what it buys is a quieter SIGTERM.
   rt.preStopUntil = t0 + pod.spec.preStopSleepSec
   rt.sigtermAt = rt.preStopUntil
-  rt.killAt = rt.sigtermAt + pod.spec.tgps
+  const graceExpiry = t0 + pod.spec.tgps
+  rt.killAt = rt.preStopUntil >= graceExpiry ? graceExpiry + 2 : graceExpiry
   publishStatus(state, node, pod, (p) => {
     p.status.container.state = 'terminating'
   })
