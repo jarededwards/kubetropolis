@@ -1,21 +1,19 @@
+/* Derived from PGSimCity src/ui/boot.ts @ 6d2c854 (Apache-2.0, © 2026
+ * Nikolay Samokhvalov). Modified for Kubetropolis: boot steps renamed for the
+ * Kubernetes city; the presentation functions are unchanged. */
+
 export interface BootStep {
   pct: number
   label: string
 }
 
 export const BOOT_STEPS = {
-  renderer: { pct: 8, label: 'starting the renderer…' },
-  camera: { pct: 16, label: 'placing the camera…' },
-  simulation: { pct: 24, label: 'warming up the cluster…' },
-  ground: { pct: 32, label: 'grading the ground…' },
-  sharedMemory: { pct: 42, label: 'pouring the shared memory plaza…' },
-  backends: { pct: 52, label: 'forking backends…' },
-  wal: { pct: 62, label: 'laying the write-ahead log…' },
-  storage: { pct: 70, label: 'excavating the data directory…' },
-  maintenance: { pct: 78, label: 'opening the maintenance yard…' },
-  standby: { pct: 85, label: 'connecting the standby…' },
-  roads: { pct: 90, label: 'painting the roads…' },
-  console: { pct: 96, label: 'wiring the console…' },
+  renderer: { pct: 12, label: 'starting the renderer…' },
+  camera: { pct: 26, label: 'placing the camera…' },
+  simulation: { pct: 40, label: 'seeding the cluster ledger…' },
+  ground: { pct: 58, label: 'grading the island…' },
+  sky: { pct: 74, label: 'raising the sky…' },
+  roads: { pct: 88, label: 'painting the roads…' },
   firstFrame: { pct: 100, label: 'rendering the first frame…' },
 } as const satisfies Record<string, BootStep>
 

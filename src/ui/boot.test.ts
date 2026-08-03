@@ -46,7 +46,11 @@ describe('boot progress', () => {
   it('publishes monotonic construction milestones ending at the first frame', () => {
     const steps = Object.values(BOOT_STEPS)
 
-    expect(steps.map((step) => step.pct)).toEqual([8, 16, 24, 32, 42, 52, 62, 70, 78, 85, 90, 96, 100])
+    /* Kubetropolis M0 boot ladder; strictly increasing and ending at 100. */
+    expect(steps.map((step) => step.pct)).toEqual([12, 26, 40, 58, 74, 88, 100])
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i].pct, 'boot progress must be monotonic').toBeGreaterThan(steps[i - 1].pct)
+    }
     expect(steps.at(-1)?.label).toBe('rendering the first frame…')
   })
 
