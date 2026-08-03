@@ -141,6 +141,7 @@ function runtimeFor(node: NodeSim, pod: PodObj): LocalPodRuntime {
     rt = {
       podUid: pod.uid,
       nextProbeAt: 0,
+      nextLivenessAt: 0,
       readinessSuccesses: 0,
       readinessFails: 0,
       livenessFails: 0,
@@ -250,6 +251,7 @@ function stepTimers(state: SimState, node: NodeSim, dt: number): void {
       rt.runningSince = state.now
       rt.memMi = pod.spec.requests.memMi
       rt.nextProbeAt = state.now + pod.spec.probes.readiness.initialDelaySeconds
+      rt.nextLivenessAt = state.now + pod.spec.probes.liveness.initialDelaySeconds
       rt.readinessSuccesses = 0
       rt.readinessFails = 0
       rt.livenessFails = 0
@@ -353,7 +355,25 @@ function stepTimers(state: SimState, node: NodeSim, dt: number): void {
           pushEvent(state, 'Warning', 'Unready', pod.name, 'readiness failing — CLOSED sign flipped')
         }
       }
-      // liveness: passes unless a future chaos wires failure injection
+    }
+
+    // liveness on its own period: passes unless the chaos dial is on. A kill
+    // is SIGKILL (exit 137) and rides the same restart ladder as any crash —
+    // which is the whole lesson: liveness sends the wreckers, readiness only
+    // flips the sign.
+    if (state.now >= rt.nextLivenessAt) {
+      rt.nextLivenessAt = state.now + pod.spec.probes.liveness.periodSeconds
+      if (!state.knobs.chaosLivenessFail) {
+        rt.livenessFails = 0
+      } else {
+        rt.livenessFails += 1
+        if (rt.livenessFails >= pod.spec.probes.liveness.failureThreshold) {
+          rt.livenessFails = 0
+          pushEvent(state, 'Warning', 'Killing', pod.name, 'liveness probe failed — container restarted')
+          containerExited(state, node, pod, rt, 137, 'Killed')
+          continue
+        }
+      }
     }
   }
 }
@@ -365,7 +385,7 @@ function containerExited(
   pod: PodObj,
   rt: LocalPodRuntime,
   exitCode: number,
-  reason: 'Error' | 'OOMKilled',
+  reason: 'Error' | 'OOMKilled' | 'Killed',
 ): void {
   const cleanFor = rt.runningSince !== undefined ? state.now - rt.runningSince : 0
   rt.memMi = pod.spec.requests.memMi // a fresh container starts fresh; a leaky image leaks again

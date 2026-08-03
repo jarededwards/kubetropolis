@@ -109,3 +109,38 @@ describe('chaosReadinessFlake', () => {
     expect(podNamed(sim.state, 'flaky')!.status.container.restartCount).toBe(0)
   })
 })
+
+describe('chaosLivenessFail', () => {
+  it('kills after failureThreshold liveness misses and rides the ladder', () => {
+    const sim = mkSim({})
+    sim.apply(samples.pod('alive'))
+    stepUntil(sim, (s) => podNamed(s, 'alive')?.status.ready === true, 60000, 'pod Ready')
+    expect(podNamed(sim.state, 'alive')!.status.container.restartCount).toBe(0)
+
+    sim.setKnob('chaosLivenessFail', true)
+    stepUntil(
+      sim,
+      (s) => (podNamed(s, 'alive')?.status.container.restartCount ?? 0) >= 2,
+      120000,
+      'two liveness kills',
+    )
+    const c = podNamed(sim.state, 'alive')!.status.container
+    expect(c.lastExitReason).toBe('Killed')
+    expect(c.exitCode).toBe(137)
+    expect(c.reason).toBe('CrashLoopBackOff')
+
+    // Recovery: dial off, the ladder clears after a clean run begins.
+    sim.setKnob('chaosLivenessFail', false)
+    stepUntil(sim, (s) => podNamed(s, 'alive')?.status.ready === true, 120000, 'recovered Ready')
+    const after = podNamed(sim.state, 'alive')!.status.container
+    expect(after.state).toBe('running')
+  })
+
+  it('never touches readiness accounting while off', () => {
+    const sim = mkSim({})
+    sim.apply(samples.pod('calm'))
+    stepUntil(sim, (s) => podNamed(s, 'calm')?.status.ready === true, 60000, 'pod Ready')
+    step(sim, 600)
+    expect(podNamed(sim.state, 'calm')!.status.container.restartCount).toBe(0)
+  })
+})
