@@ -58,6 +58,10 @@ issue tracking if hosting is chosen). Full plan:
 Budget pressure valve: trim M8 extras (etcd-slow/quota scenarios, bake polish).
 Never M7.
 
+Post-v1 art item: the offline indirect-light bake (`npm run bake:light`) was
+deliberately deferred — tooling is vendored and dormant; run it against final
+geometry when the art pass warrants it.
+
 ## v1 exclusions (deliberate)
 Walk mode · audio · free-text YAML parsing · real-cluster connection ·
 StatefulSets/PV/PVC (anchors reserved) · secondary app entries · analytics.
