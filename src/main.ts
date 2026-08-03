@@ -45,6 +45,7 @@ import { createGround } from './world/ground'
 import { createSky } from './world/sky'
 import { createControlPlane } from './world/control-plane'
 import { createHarbor } from './world/harbor'
+import { createIngress } from './world/ingress'
 import { createNodeDistricts } from './world/node-district'
 import { CITY } from './world/layout'
 
@@ -144,6 +145,9 @@ async function boot(): Promise<void> {
     (CITY.harbor.sea.z0 + CITY.harbor.sea.z1) / 2,
   )
   scene.add(water.group)
+
+  await progress(BOOT_STEPS.ingress)
+  add(createIngress(ctx))
 
   await progress(BOOT_STEPS.roads)
   scene.add(createRoads(theme))

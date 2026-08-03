@@ -229,6 +229,30 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       },
     })
 
+    // M6: the signage box becomes a citizen-facing component — the posted
+    // list that LAGS the directory, which is the delete-race lesson in situ.
+    const sgAt = ANCHOR[`node.${letter}.signage` as keyof typeof ANCHOR]
+    ctx.register({
+      id: `node.${letter}.signage`,
+      name: `${name} signage (kube-proxy)`,
+      role: 'network — this district’s programmed copy of the directory',
+      kind: 'network',
+      district: name as 'node-a',
+      object: group,
+      tier: 2,
+      focus: { target: [sgAt[0], 4, sgAt[2]], distance: 30, dir: [-0.2, 0.4, 0.9] },
+      labelAt: [sgAt[0], 8, sgAt[2]],
+      color: COLOR.client,
+      readout: (s: SimState) => {
+        const node = nodeSimOf(s)
+        if (!node) return '—'
+        if (s.vitals.sliceGeneration === 0) return 'nothing posted — no Service'
+        const open = node.proxy.endpoints.filter((e) => e.conditions.ready).length
+        const behind = node.proxy.programmedRev < s.vitals.etcdRevision - s.vitals.watchMaxLagRev
+        return `posts ${open} open (directory: ${s.vitals.readyEndpoints})${behind ? ' · catching up' : ''}`
+      },
+    })
+
     ctx.register({
       id: `node.${letter}.substation`,
       name: `${name} substation`,
@@ -269,6 +293,37 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       },
     })
   }
+
+  /* --- the followable traced pod (M6) ---------------------------------------
+   * One marker, re-aimed at whichever building the delete rail is following.
+   * The registered focus spec is MUTATED in place each frame; the camera reads
+   * it at emit time, so close-ups land on the actual pad. No per-pod registry
+   * bloat — exactly one followable, alive only while a trace holds a pod. */
+  const tracedMarker = new THREE.Group()
+  tracedMarker.name = 'pod.traced'
+  group.add(tracedMarker)
+  const tracedFocus = { target: [0, 6, 0] as [number, number, number], distance: 26, dir: [-0.3, 0.5, 0.85] as [number, number, number] }
+  const tracedLabelAt: [number, number, number] = [0, 9, 0]
+  ctx.register({
+    id: 'pod.traced',
+    name: 'the traced pod',
+    role: 'the building the rail is following',
+    kind: 'process',
+    district: 'world',
+    object: tracedMarker,
+    tier: 2,
+    focus: tracedFocus,
+    labelAt: tracedLabelAt,
+    color: COLOR.podTerminating,
+    readout: (s: SimState) => {
+      const uid = s.trace?.podUid
+      if (!uid) return ''
+      const pod = s.etcd.objects.get(uid)
+      if (!pod || pod.kind !== 'Pod') return 'site cleared'
+      const cs = pod.status.container.state
+      return pod.deletionTimestamp !== undefined ? `terminating · ${cs}` : cs
+    },
+  })
 
   /* --- update -------------------------------------------------------------- */
 
@@ -421,6 +476,26 @@ export function createNodeDistricts(ctx: WorldContext): WorldModule {
       if (count > 0) {
         const w = Math.min(1 + count * 0.35, 4)
         tile.scale.set(w, 1 + 0.25 * Math.sin(t * 4), 1)
+      }
+    }
+
+    /* 2c. Aim the followable marker at the traced pod's pad (M6 delete rail). */
+    const tracedUid = s.trace?.podUid
+    tracedMarker.visible = false
+    if (tracedUid) {
+      for (let i = 0; i < SLOTS; i++) {
+        if (slots[i].uid === tracedUid) {
+          const [tx, , tz] = nodePadPos(Math.floor(i / PAD_COUNT), i % PAD_COUNT)
+          tracedMarker.position.set(tx, 4, tz)
+          tracedMarker.visible = true
+          tracedFocus.target[0] = tx
+          tracedFocus.target[1] = 6
+          tracedFocus.target[2] = tz
+          tracedLabelAt[0] = tx
+          tracedLabelAt[1] = 10
+          tracedLabelAt[2] = tz
+          break
+        }
       }
     }
 

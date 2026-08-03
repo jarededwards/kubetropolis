@@ -378,6 +378,29 @@ route('request.in', [
   [178, 2, -44],
 ], { color: COLOR.client, speed: 96, visible: true, roadOpacity: 0.12 })
 
+/* M6: the junction's delivery legs — callers leave the roundabout for
+ * whichever district the directory listed. */
+route('request.a', [
+  [178, 2, -40],
+  [120, 2, 0],
+  [-40, 2, 46],
+  [-146, 2, 66],
+], { color: COLOR.client, speed: 96, visible: true, roadOpacity: 0.1 })
+
+route('request.b', [
+  [178, 2, -40],
+  [120, 2, 8],
+  [40, 2, 48],
+  [-2, 2, 66],
+], { color: COLOR.client, speed: 96, visible: true, roadOpacity: 0.1 })
+
+route('request.c', [
+  [178, 2, -40],
+  [162, 2, 8],
+  [152, 2, 42],
+  [148, 2, 66],
+], { color: COLOR.client, speed: 96, visible: true, roadOpacity: 0.1 })
+
 route('refuel', [
   [-282, 2, 116],
   [-288, 2, 36],
