@@ -117,7 +117,8 @@ number of fixed steps, never their size.
   published status updates coarsely (real cadvisor-style sampling, simplified).
 - **Readiness flake is windowed, not random**: 40-model-second bad windows
   alternating with good ones — deterministic, sized so failureThreshold can be
-  crossed at the default probe period.
+  crossed at the default probe period, and phase-staggered per pod (M6) so a
+  flaking fleet never fails in lockstep and traffic genuinely reroutes.
 - **Rolling updates**: "available" means Ready (no minReadySeconds);
   progressDeadlineSeconds and revision annotations are not modeled (the
   previous ReplicaSet is found by hash, kept at zero replicas); old contracts

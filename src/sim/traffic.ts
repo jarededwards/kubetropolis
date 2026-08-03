@@ -22,9 +22,18 @@ const CPU_EMA_TAU = 2
 const FLOW_SAMPLE = 4
 const MISROUTE_RED = 0xff4d5e
 
-/** chaosReadinessFlake: deterministic 40 s bad windows (shared with kubelet). */
-export function flakeBadWindow(state: SimState): boolean {
-  return state.knobs.chaosReadinessFlake && Math.floor(state.now / 40) % 2 === 1
+/**
+ * chaosReadinessFlake: deterministic 40 s bad windows, PHASE-STAGGERED per pod
+ * (uid hash) so doors flake at different moments and traffic genuinely
+ * reroutes — a whole city failing in lockstep would leave nowhere to route.
+ * Shared with the kubelet: an app fails its users when it fails its probes.
+ */
+export function flakeBadWindow(state: SimState, podUid: string): boolean {
+  if (!state.knobs.chaosReadinessFlake) return false
+  let h = 0
+  for (let i = 0; i < podUid.length; i++) h = (h * 31 + podUid.charCodeAt(i)) | 0
+  const phase = Math.abs(h) % 40
+  return Math.floor((state.now + phase) / 40) % 2 === 1
 }
 
 /** Is this door ACTUALLY serving, right now, on the street? */
@@ -44,7 +53,7 @@ export function servingTruth(state: SimState, pod: PodObj | undefined): boolean 
   }
   if (cs !== 'running') return false
   // A flaking app fails its users exactly when it fails its probes.
-  return !flakeBadWindow(state)
+  return !flakeBadWindow(state, pod.uid)
 }
 
 export function stepTraffic(state: SimState, dt: number): void {
@@ -72,10 +81,9 @@ export function stepTraffic(state: SimState, dt: number): void {
     arrivals = 0
   }
   if (arrivals > 0 && directory.length === 0) {
-    // The board lists no open doors — every caller is turned away at the
-    // junction itself. This is the readiness lesson working as designed.
-    traffic.misrouted += arrivals
-    misroutes += arrivals
+    // The board lists no open doors — the junction REFUSES these callers
+    // (real: 503s). Refusal is not a misroute: nothing was listed wrongly.
+    traffic.refused += arrivals
     arrivals = 0
   }
   for (let i = 0; i < arrivals; i++) {

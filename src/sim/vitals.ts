@@ -71,6 +71,7 @@ export function derive(state: SimState): void {
     sliceGeneration: slice?.generation ?? 0,
     reqServedTotal: state.traffic.served,
     reqMisroutedTotal: state.traffic.misrouted,
+    reqRefusedTotal: state.traffic.refused,
     cpuUsedM: Math.round(cpuUsedM),
   }
 }

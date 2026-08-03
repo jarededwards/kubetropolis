@@ -71,6 +71,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       rrCursor: 0,
       served: 0,
       misrouted: 0,
+      refused: 0,
       idleNoService: 0,
     },
     operatorRunning: false,
@@ -92,6 +93,7 @@ export function initState(seed: number, knobs: Knobs): SimState {
       sliceGeneration: 0,
       reqServedTotal: 0,
       reqMisroutedTotal: 0,
+      reqRefusedTotal: 0,
       cpuUsedM: 0,
     },
   }

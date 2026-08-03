@@ -526,6 +526,8 @@ export interface TrafficState {
   served: number
   /** requests that reached a door no longer serving — the delete-race cost */
   misrouted: number
+  /** arrivals the junction refused because the board listed no open doors */
+  refused: number
   /** arrivals while no Service existed: nothing to dial */
   idleNoService: number
 }
@@ -556,6 +558,7 @@ export interface Vitals {
   sliceGeneration: number
   reqServedTotal: number
   reqMisroutedTotal: number
+  reqRefusedTotal: number
   /** synthesized cluster CPU usage from live traffic, millicores */
   cpuUsedM: number
 }

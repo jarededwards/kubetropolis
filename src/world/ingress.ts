@@ -143,7 +143,7 @@ export function createIngress(ctx: WorldContext): WorldModule {
     focus: { target: [jn[0], 4, jn[2]], distance: 84, dir: [0.35, 0.5, -0.75] },
     color: COLOR.client,
     readout: (s: SimState) =>
-      `${fmtNum(s.vitals.reqServedTotal, 0)} served · ${fmtNum(s.vitals.reqMisroutedTotal, 0)} misrouted`,
+      `${fmtNum(s.vitals.reqServedTotal, 0)} served · ${fmtNum(s.vitals.reqMisroutedTotal, 0)} misrouted · ${fmtNum(s.vitals.reqRefusedTotal, 0)} refused`,
   })
 
   ctx.register({

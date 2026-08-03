@@ -331,9 +331,9 @@ function stepTimers(state: SimState, node: NodeSim, dt: number): void {
       // Flake = 40-second bad windows alternating with 40 good — long enough
       // for failureThreshold consecutive misses at the 10s period, so the
       // CLOSED sign flips both ways, deterministically, with zero restarts.
-      // Shared with the data plane: a flaking app fails its USERS in the same
-      // windows it fails its probes (traffic.flakeBadWindow).
-      const readinessOk = !flakeBadWindow(state)
+      // Phase-staggered per pod, and shared with the data plane: a flaking app
+      // fails its USERS in the same windows it fails its probes.
+      const readinessOk = !flakeBadWindow(state, pod.uid)
       if (readinessOk) {
         rt.readinessFails = 0
         rt.readinessSuccesses += 1
