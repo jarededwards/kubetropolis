@@ -258,7 +258,8 @@ export const SCENARIOS: readonly ScenarioDef[] = [
       [100, 'Zero restarts',
         'Look at the restart counter: zero. Readiness unlists; liveness would have sent the '
         + 'wreckers. The building was never in danger — only unlisted, and only until its checks '
-        + 'pass again.'],
+        + 'pass again. Want to see the other probe? Flip chaosLivenessFail in the overlay and '
+        + 'watch the same building come down and climb the ladder.'],
     ],
   },
   {
