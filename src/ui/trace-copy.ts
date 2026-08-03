@@ -279,7 +279,7 @@ const LIGHTHOUSE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
       t.crdMatched
         ? 'Validation finds the law: lighthouses.harbor.city, registered and accepted. The form is legal; the permit passes like any built-in kind.'
         : 'Validation checks the register for a law that permits this kind — and this is where the paper stops if the council never passed one.',
-    line: (t) => (t.crdMatched ? 'schema matched: lighthouses.harbor.city' : 'checking the register…'),
+    line: (t) => (t.crdMatched ? 'kind registered: lighthouses.harbor.city' : 'checking the register…'),
   },
   etcd_commit: {
     title: 'A custom row is still a row',

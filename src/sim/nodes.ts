@@ -7,7 +7,7 @@
  * node.monitor), marks the node Ready=Unknown — silence means UNKNOWN, not
  * dead — stamps the unreachable taints, and marks the node's pods unready
  * (the MarkPodsNotReady analog) so the directory stops listing them.
- * Eviction (the 300s toleration countdown) arrives at M8.
+ * Eviction (the 300s toleration countdown) lives in lifecycle.ts.
  */
 
 import { CLAIM_VALUES } from '../core/claims'

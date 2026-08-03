@@ -12,8 +12,8 @@ The reader is technically capable but may be new to Kubernetes operations.
 Explain precisely without assuming operator vocabulary, and disclose every
 simplification that could change the lesson (see FIDELITY.md).
 
-The plan of record is `/Users/jared/.claude/plans/https-github-com-nikolays-pgsimcity-ref-enumerated-stallman.md`;
-milestones and epic status live in ROADMAP.md.
+Milestones and epic status live in ROADMAP.md; the model's boundary is
+FIDELITY.md; vendor provenance is VENDORED.md.
 
 ## Provenance
 Portions derive from PGSimCity (github.com/NikolayS/PGSimCity, Apache-2.0,
@@ -111,10 +111,10 @@ and makes zero application network calls.
 - Cross-cutting files — src/engine/renderer.ts, src/main.ts,
   src/world/layout.ts, src/core/types.ts — are edited only in a dedicated
   worktree. Never use git stash to isolate work.
-- Never push. This repo currently has no remote by product-owner decision;
-  if one ever exists, main still belongs to the project owner. Commit in your
-  own worktree on your own branch. Conventional Commits; subject under 50
-  chars; no co-author trailers.
+- The remote is github.com/jarededwards/kubetropolis. Push feature branches;
+  NEVER push main — main moves only via pull request, merged by the project
+  owner's process. Commit in your own worktree on your own branch.
+  Conventional Commits; subject under 50 chars; no co-author trailers.
 - A milestone is not closed until an independent review panel (fidelity lens,
   operations lens, reader-experience lens) has REPORTED, not merely been
   dispatched, and the Product Owner has signed off. Blocking findings block.
