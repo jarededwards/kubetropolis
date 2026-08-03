@@ -91,24 +91,39 @@ function filterNode(state: SimState, pod: PodObj, nodeObj: NodeObj): FilterVerdi
     return { node: nodeObj.name, ok: false, failed: 'Unschedulable' }
   }
   for (const taint of nodeObj.spec.taints) {
-    if (!pod.spec.tolerations.some((t) => t.key === taint.key)) {
+    // Tolerated only on key + effect (B3b): a NoExecute toleration does not
+    // tolerate a NoSchedule taint. An effect-less toleration matches any.
+    const tolerated = pod.spec.tolerations.some(
+      (t) => t.key === taint.key && (t.effect === undefined || t.effect === taint.effect),
+    )
+    if (!tolerated) {
       return { node: nodeObj.name, ok: false, failed: 'TaintToleration' }
     }
   }
-  const sim = state.nodes.find((n) => n.id === nodeObj.name)
-  const assumed = assumedLoad(state, nodeObj.name)
-  const cpuFree = nodeObj.status.allocatable.cpuM - (sim?.allocated.cpuM ?? 0) - assumed.cpuM
-  const memFree = nodeObj.status.allocatable.memMi - (sim?.allocated.memMi ?? 0) - assumed.memMi
+  const load = nodeLoad(state, nodeObj.name)
+  const cpuFree = nodeObj.status.allocatable.cpuM - load.cpuM
+  const memFree = nodeObj.status.allocatable.memMi - load.memMi
   if (pod.spec.requests.cpuM > cpuFree || pod.spec.requests.memMi > memFree) {
     return { node: nodeObj.name, ok: false, failed: 'ResourcesFit' }
   }
   return { node: nodeObj.name, ok: true }
 }
 
-/** Requests of pods this office has assumed onto a node, pre-commit. */
-function assumedLoad(state: SimState, node: string): { cpuM: number; memMi: number } {
+/**
+ * The zoning office's NodeInfo (B4): COMMITTED pods read from the vault — the
+ * office's own frame, never the end-of-tick derived cache, which lags a bind
+ * commit by one tick and briefly counts a fresh pod NOWHERE — plus the pods
+ * this office has assumed pre-commit. Terminating pods still hold their
+ * ground until removed, exactly like real NodeInfo.
+ */
+function nodeLoad(state: SimState, node: string): { cpuM: number; memMi: number } {
   let cpuM = 0
   let memMi = 0
+  for (const o of state.etcd.objects.values()) {
+    if (o.kind !== 'Pod' || o.spec.nodeName !== node) continue
+    cpuM += o.spec.requests.cpuM
+    memMi += o.spec.requests.memMi
+  }
   for (const [uid, assumedNode] of state.sched.assumed) {
     if (assumedNode !== node) continue
     const pod = getPod(state, uid)
@@ -121,10 +136,13 @@ function assumedLoad(state: SimState, node: string): { cpuM: number; memMi: numb
 }
 
 function scoreNode(state: SimState, pod: PodObj, nodeObj: NodeObj): ScoreEntry {
-  const sim = state.nodes.find((n) => n.id === nodeObj.name)
   const cap = nodeObj.status.allocatable
-  const usedCpu = (sim?.allocated.cpuM ?? 0) + pod.spec.requests.cpuM
-  const usedMem = (sim?.allocated.memMi ?? 0) + pod.spec.requests.memMi
+  // B4: assumed pods count toward SCORING exactly as they do toward filtering
+  // (the real scheduler's NodeInfo includes assumed pods) — otherwise a burst
+  // of bare pods all grade node-a identical and pile onto it.
+  const load = nodeLoad(state, nodeObj.name)
+  const usedCpu = load.cpuM + pod.spec.requests.cpuM
+  const usedMem = load.memMi + pod.spec.requests.memMi
 
   // NodeResourcesLeastAllocated (shape, 0-100)
   const leastAllocated = Math.round(
@@ -132,7 +150,8 @@ function scoreNode(state: SimState, pod: PodObj, nodeObj: NodeObj): ScoreEntry {
   )
   // ImageLocality — the harbor pays off here, but never outvotes spreading:
   // in the real default profile its weight is small next to topology spread.
-  const imageLocality = sim?.imageCache.has(pod.spec.image) ? 50 : 0
+  const nodeSim = state.nodes.find((n) => n.id === nodeObj.name)
+  const imageLocality = nodeSim?.imageCache.has(pod.spec.image) ? 50 : 0
   // Spread-lite: prefer nodes with fewer siblings of the same owner —
   // counting both committed bindings and this office's own assumptions.
   let siblings = 0
