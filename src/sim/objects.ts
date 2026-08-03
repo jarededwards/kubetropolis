@@ -7,11 +7,13 @@
 import { CLAIM_VALUES } from '../core/claims'
 import type {
   DeploymentObj,
+  EndpointSliceObj,
   K8sObject,
   LeaseObj,
   NodeObj,
   PodObj,
   ReplicaSetObj,
+  ServiceObj,
   SimState,
   Uid,
 } from '../core/types'
@@ -237,6 +239,56 @@ export function allOfKind<T extends K8sObject>(state: SimState, kind: T['kind'])
   const out: T[] = []
   for (const o of state.etcd.objects.values()) if (o.kind === kind) out.push(o as T)
   return out
+}
+
+export function mkService(
+  state: SimState,
+  name: string,
+  spec: { port: number; host: string; selector?: Record<string, string> },
+): ServiceObj {
+  return {
+    uid: nextUid(state),
+    kind: 'Service',
+    name,
+    namespace: DEFAULT_NAMESPACE,
+    resourceVersion: 0,
+    generation: 1,
+    labels: {},
+    finalizers: [],
+    spec: {
+      selector: spec.selector ?? { app: name },
+      port: spec.port,
+      ingressHost: spec.host,
+    },
+    status: {},
+  }
+}
+
+export function mkEndpointSlice(state: SimState, svc: ServiceObj): EndpointSliceObj {
+  return {
+    uid: nextUid(state),
+    kind: 'EndpointSlice',
+    name: `${svc.name}-slice`,
+    namespace: svc.namespace,
+    resourceVersion: 0,
+    generation: 1,
+    labels: { 'kubernetes.io/service-name': svc.name },
+    ownerUid: svc.uid,
+    finalizers: [],
+    spec: { serviceUid: svc.uid, endpoints: [] },
+    status: {},
+  }
+}
+
+/** The single demo Service (M6 models one service + one slice). */
+export function getService(state: SimState): ServiceObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'Service') return o
+  return undefined
+}
+
+export function getSlice(state: SimState): EndpointSliceObj | undefined {
+  for (const o of state.etcd.objects.values()) if (o.kind === 'EndpointSlice') return o
+  return undefined
 }
 
 export function podsOwnedBy(state: SimState, ownerUid: Uid): PodObj[] {

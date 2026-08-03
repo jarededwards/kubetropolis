@@ -157,8 +157,8 @@ function courierRouteFor(subscriber: ComponentId): string | null {
   if (subscriber === 'sched') return 'watch.sched'
   if (subscriber.startsWith('ctl.')) return 'watch.inspect'
   if (subscriber === 'operator') return 'watch.operator'
-  if (subscriber.startsWith('kubelet.node-')) {
-    const letter = subscriber.slice('kubelet.node-'.length)
+  if (subscriber.startsWith('kubelet.node-') || subscriber.startsWith('proxy.node-')) {
+    const letter = subscriber.slice(subscriber.indexOf('.node-') + '.node-'.length)
     if (letter === 'a' || letter === 'b' || letter === 'c') return `watch.kubelet.${letter}`
   }
   return null
@@ -242,6 +242,35 @@ function deliver(state: SimState, subscriber: ComponentId, rec: ChangeRecord): v
       const owner = obj?.ownerUid ?? state.podOwners.get(rec.uid)
       if (rec.event === 'DELETED') state.podOwners.delete(rec.uid)
       if (owner) enqueue(ctl.workqueue, owner)
+    }
+    return
+  }
+
+  if (subscriber === 'ctl.endpointslice') {
+    const ctl = state.controllers.endpointslice
+    // One service, one slice (M6): any relevant change re-checks the directory.
+    if (rec.kind === 'Service' || rec.kind === 'EndpointSlice' || rec.kind === 'Pod') {
+      enqueue(ctl.workqueue, rec.kind === 'Service' ? rec.uid : 'directory')
+    }
+    return
+  }
+
+  if (subscriber.startsWith('proxy.')) {
+    // The district's signage box programs its OWN copy of the directory — at
+    // its courier's pace, which is the entire stale-routing lesson.
+    const nodeId = subscriber.slice('proxy.'.length)
+    const node = state.nodes.find((n) => n.id === nodeId)
+    if (!node || rec.kind !== 'EndpointSlice') return
+    if (rec.event === 'DELETED') {
+      node.proxy = { programmedRev: rec.rev, endpoints: [] }
+      return
+    }
+    const slice = obj as { spec?: { endpoints?: unknown } } | undefined
+    if (slice?.spec?.endpoints) {
+      node.proxy = {
+        programmedRev: (obj as { resourceVersion: number }).resourceVersion,
+        endpoints: structuredClone(slice.spec.endpoints) as typeof node.proxy.endpoints,
+      }
     }
     return
   }

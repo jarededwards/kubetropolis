@@ -16,6 +16,7 @@ import { traceStopBit } from '../core/model-helpers'
 import { presentedStages } from '../core/trace-presentation'
 import type {
   ActionKind,
+  EndpointSliceObj,
   Knobs,
   PodObj,
   SimState,
@@ -23,6 +24,8 @@ import type {
   TraceRecord,
   TraceStop,
 } from '../core/types'
+import { findPodByName } from './apiserver'
+import { getSlice } from './objects'
 
 export const SLOW_TIMESCALE = 0.05
 /** the receipt stop lingers this long after readiness before wrapping up */
@@ -39,6 +42,10 @@ export function armTrace(
   playback: TracePlayback,
 ): void {
   const savedKnobs: Knobs = { ...state.knobs }
+  const slice = getSlice(state)
+  const readyDoors = slice
+    ? slice.spec.endpoints.reduce((n, e) => n + (e.conditions.ready ? 1 : 0), 0)
+    : 0
   state.trace = {
     action,
     playback,
@@ -78,7 +85,43 @@ export function armTrace(
     eventsSince: 0,
     autoPaused: false,
     savedKnobs,
+    deleteRev: 0,
+    deletedAt: 0,
+    withdrawRev: 0,
+    withdrawAt: 0,
+    districtsProgrammed: 0,
+    districtsTotal: state.nodes.length,
+    sigtermLandedAt: 0,
+    killAtObserved: 0,
+    graceRemainingSec: 0,
+    cleanExit: false,
+    removed: false,
+    replacementName: '',
+    trafficLive: readyDoors > 0 && state.knobs.reqPerSec > 0,
+    misroutedSince: 0,
+    misroutedAtStart: state.traffic.misrouted,
+    suggestedPreStopSec: 0,
   }
+
+  if (action === 'delete-pod') {
+    // The victim already stands: the rail follows a known building from the
+    // first frame, and the RS family is on record before the paperwork lands.
+    const victim = findPodByName(state, subject)
+    if (victim) {
+      state.trace.subjectUid = victim.uid
+      state.trace.podUid = victim.uid
+      state.trace.podName = victim.name
+      state.trace.subject = victim.name
+      // the victim's district — the camera follows the actual building
+      state.trace.chosen = victim.spec.nodeName
+      state.trace.familyUids.push(victim.uid)
+      if (victim.ownerUid) {
+        state.trace.replicaSetUid = victim.ownerUid
+        state.trace.familyUids.push(victim.ownerUid)
+      }
+    }
+  }
+
   applyPlayback(state, playback)
   if (playback === 'step') {
     // Read "You are just a client" first; nothing moves until next().
@@ -160,13 +203,14 @@ function nextStopOf(t: TraceRecord): TraceStop | null {
  * -------------------------------------------------------------------------*/
 
 function scanLog(state: SimState, t: TraceRecord): void {
+  const deleteRail = t.action === 'delete-pod'
   const primaryKind = t.action === 'apply-deployment' ? 'Deployment' : 'Pod'
   for (const rec of state.etcd.log) {
     if (rec.rev <= t.scannedRev) continue
     t.scannedRev = rec.rev
     const obj = state.etcd.objects.get(rec.uid)
 
-    if (!t.subjectUid && rec.op === 'put' && rec.kind === primaryKind && obj) {
+    if (!deleteRail && !t.subjectUid && rec.op === 'put' && rec.kind === primaryKind && obj) {
       if (obj.name === t.subject || obj.name.startsWith(`${t.subject}-`)) {
         t.subjectUid = rec.uid
         t.commitRev = rec.rev
@@ -181,28 +225,73 @@ function scanLog(state: SimState, t: TraceRecord): void {
       }
     }
 
-    if (
-      t.deploymentUid &&
-      !t.replicaSetUid &&
-      rec.kind === 'ReplicaSet' &&
-      obj?.ownerUid === t.deploymentUid
-    ) {
-      t.replicaSetUid = rec.uid
-      t.rsCreated = true
-      t.familyUids.push(rec.uid)
+    if (deleteRail && t.podUid) {
+      // The ledger stamps the demolition notice: one put, deletionTimestamp set.
+      if (t.deleteRev === 0 && rec.uid === t.podUid && rec.op === 'put') {
+        const pod = obj as PodObj | undefined
+        if (pod?.deletionTimestamp !== undefined) {
+          t.deleteRev = rec.rev
+          t.deletedAt = state.now
+          // fan-out math runs against the DELETE commit on this rail
+          t.commitRev = rec.rev
+        }
+      }
+      // The directory withdraws the door — a slice edition that no longer
+      // ready-lists the victim, committed AFTER the notice.
+      if (t.deleteRev > 0 && t.withdrawRev === 0 && rec.kind === 'EndpointSlice') {
+        const slice = obj as EndpointSliceObj | undefined
+        const stillReady = slice?.spec.endpoints.some(
+          (e) => e.podUid === t.podUid && e.conditions.ready,
+        )
+        if (slice && !stillReady) {
+          t.withdrawRev = rec.rev
+          t.withdrawAt = state.now
+        }
+      }
+      // The site is cleared: the final remove commits.
+      if (rec.uid === t.podUid && rec.event === 'DELETED') {
+        t.removed = true
+        // The backstop never fired if the site cleared before killAt.
+        t.cleanExit = t.killAtObserved > 0 && state.now < t.killAtObserved - 0.05
+      }
+      // The desk files the replacement — a NEW pod under the same contract.
+      if (
+        t.replicaSetUid &&
+        rec.kind === 'Pod' &&
+        rec.event === 'ADDED' &&
+        rec.uid !== t.podUid &&
+        obj?.ownerUid === t.replicaSetUid &&
+        !t.familyUids.includes(rec.uid)
+      ) {
+        t.familyUids.push(rec.uid)
+        t.replacementName = obj.name
+      }
     }
 
-    if (
-      t.replicaSetUid &&
-      rec.kind === 'Pod' &&
-      rec.op === 'put' &&
-      obj?.ownerUid === t.replicaSetUid &&
-      !t.familyUids.includes(rec.uid)
-    ) {
-      t.familyUids.push(rec.uid)
-      if (!t.podUid) {
-        t.podUid = rec.uid
-        t.podName = obj.name
+    if (!deleteRail) {
+      if (
+        t.deploymentUid &&
+        !t.replicaSetUid &&
+        rec.kind === 'ReplicaSet' &&
+        obj?.ownerUid === t.deploymentUid
+      ) {
+        t.replicaSetUid = rec.uid
+        t.rsCreated = true
+        t.familyUids.push(rec.uid)
+      }
+
+      if (
+        t.replicaSetUid &&
+        rec.kind === 'Pod' &&
+        rec.op === 'put' &&
+        obj?.ownerUid === t.replicaSetUid &&
+        !t.familyUids.includes(rec.uid)
+      ) {
+        t.familyUids.push(rec.uid)
+        if (!t.podUid) {
+          t.podUid = rec.uid
+          t.podName = obj.name
+        }
       }
     }
 
@@ -252,6 +341,58 @@ function refreshLive(state: SimState, t: TraceRecord): void {
     }
     t.familyPods = n
     t.siblingsAtStop = Math.max(0, n - 1)
+  }
+
+  // the directory's view of the traced door (M6: Services exist now)
+  const sliceNow = getSlice(state)
+  t.serviceListed = !!(
+    t.podUid && sliceNow?.spec.endpoints.some((e) => e.podUid === t.podUid && e.conditions.ready)
+  )
+
+  // the newspaper (also after the traced pod is gone — the rail outlives it)
+  let since = 0
+  for (const e of state.events) if (e.at >= t.startedAt) since += 1
+  t.eventsSince = since
+
+  // -- delete rail live evidence (runs to the end of the rail, pod or no pod) --
+  if (t.action === 'delete-pod') {
+    t.misroutedSince = state.traffic.misrouted - t.misroutedAtStart
+
+    const livePod = tracedPod(state, t)
+    const nodeIdOfPod = livePod?.spec.nodeName
+    if (nodeIdOfPod && t.podUid) {
+      const node = state.nodes.find((n) => n.id === nodeIdOfPod)
+      const rt = node?.kubelet.runtime.get(t.podUid)
+      if (rt) {
+        if (rt.sigtermAt !== undefined && state.now >= rt.sigtermAt && t.sigtermLandedAt === 0) {
+          t.sigtermLandedAt = rt.sigtermAt
+        }
+        if (rt.killAt !== undefined) t.killAtObserved = rt.killAt
+        t.graceRemainingSec = rt.killAt !== undefined ? Math.max(0, rt.killAt - state.now) : 0
+      }
+    }
+    if (t.removed) t.graceRemainingSec = 0
+
+    // District signage catching up with the withdrawal, one courier at a time.
+    if (t.withdrawRev > 0) {
+      let programmed = 0
+      for (const node of state.nodes) {
+        if (node.proxy.programmedRev >= t.withdrawRev) programmed += 1
+      }
+      t.districtsProgrammed = programmed
+      if (programmed >= t.districtsTotal && t.suggestedPreStopSec === 0) {
+        // The whole propagation, measured: notice → every signage updated.
+        t.suggestedPreStopSec = Math.max(2, Math.ceil(state.now - t.deletedAt) + 1)
+      }
+    }
+    if (t.suggestedPreStopSec === 0) {
+      // Fallback while propagation is still running: base courier pace × the
+      // slowest plausible walker, plus a second of margin.
+      t.suggestedPreStopSec = Math.max(
+        2,
+        Math.ceil(((state.knobs.watchLatencyMs / 1000) * 1.5 + 1) * 2),
+      )
+    }
   }
 
   const pod = tracedPod(state, t)
@@ -308,10 +449,6 @@ function refreshLive(state: SimState, t: TraceRecord): void {
     }
   }
 
-  // the newspaper
-  let since = 0
-  for (const e of state.events) if (e.at >= t.startedAt) since += 1
-  t.eventsSince = since
 }
 
 /* ---------------------------------------------------------------------------
@@ -320,6 +457,7 @@ function refreshLive(state: SimState, t: TraceRecord): void {
 
 function conditionMet(state: SimState, t: TraceRecord, next: TraceStop): boolean {
   const pod = tracedPod(state, t)
+  const deleteRail = t.action === 'delete-pod'
   switch (next) {
     case 'client':
       return true
@@ -327,7 +465,8 @@ function conditionMet(state: SimState, t: TraceRecord, next: TraceStop): boolean
       // The stop is "the desk FINISHES your manifest" — the receipt must exist.
       return t.subjectUid !== undefined || t.mutations.length > 0
     case 'etcd_commit':
-      return t.subjectUid !== undefined
+      // Delete rail: the ledger stop is the demolition notice committing.
+      return deleteRail ? t.deleteRev > 0 : t.subjectUid !== undefined
     case 'watch_fanout':
       return t.commitRev > 0 && (t.watchersNotified > 0 || t.maxBacklog > 0)
     case 'deploy_reconcile':
@@ -353,7 +492,25 @@ function conditionMet(state: SimState, t: TraceRecord, next: TraceStop): boolean
       return pod?.status.container.state === 'running' || pod?.status.ready === true
     case 'endpoints':
       return pod?.status.ready === true
+
+    /* -- delete rail -- */
+    case 'endpoint_withdraw':
+      // Honest no-traffic variant: with no directory to withdraw from, the
+      // stop reads its "no number listed it" copy and passes immediately.
+      return !t.trafficLive || t.withdrawRev > 0 || t.removed
+    case 'sigterm':
+      return t.sigtermLandedAt > 0 || t.removed
+    case 'grace_countdown':
+      return t.sigtermLandedAt > 0 || t.removed
+    case 'sigkill':
+      // The stop renders "not needed — exited clean" when cleanExit is true.
+      return t.removed || (t.killAtObserved > 0 && state.now >= t.killAtObserved)
+    case 'rs_notices':
+      // A bare pod has no owner: nothing files a replacement (copy variant).
+      return t.replicaSetUid === undefined ? t.removed : t.replacementName !== ''
+
     case 'done':
+      if (deleteRail) return t.removed && state.now - t.stopAt >= DONE_BEAT_SECONDS
       return t.stop === 'endpoints' && state.now - t.stopAt >= DONE_BEAT_SECONDS
   }
 }

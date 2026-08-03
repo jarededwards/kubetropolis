@@ -187,8 +187,54 @@ export interface LeaseObj extends ObjMeta {
   spec: { holder: string; durationSeconds: number; renewedAt: number }
 }
 
-/** The kinds the M1 model actually stores. Later milestones extend this. */
-export type K8sObject = PodObj | ReplicaSetObj | DeploymentObj | NodeObj | LeaseObj
+export interface ServiceObj extends ObjMeta {
+  kind: 'Service'
+  spec: {
+    selector: Record<string, string>
+    port: number
+    /** the ingress hostname routed to this service (M6 single-service model) */
+    ingressHost?: string
+  }
+  status: Record<string, never>
+}
+
+/** One door in the directory. */
+export interface EndpointEntry {
+  podUid: Uid
+  podName: string
+  nodeName: string
+  conditions: {
+    /** serving ∧ ¬terminating — what proxies route to (claims: slice.conditions) */
+    ready: boolean
+    serving: boolean
+    terminating: boolean
+  }
+}
+
+/**
+ * FIDELITY: real EndpointSlices carry `endpoints`/`ports` at top level with a
+ * separate status; the model folds endpoints into spec so the standard
+ * update-merge semantics (and generation, which bumps on real change only)
+ * apply unchanged.
+ */
+export interface EndpointSliceObj extends ObjMeta {
+  kind: 'EndpointSlice'
+  spec: {
+    serviceUid: Uid
+    endpoints: EndpointEntry[]
+  }
+  status: Record<string, never>
+}
+
+/** The kinds the model actually stores. Later milestones extend this. */
+export type K8sObject =
+  | PodObj
+  | ReplicaSetObj
+  | DeploymentObj
+  | NodeObj
+  | LeaseObj
+  | ServiceObj
+  | EndpointSliceObj
 
 /* ---------------------------------------------------------------------------
  * Watch machinery — state moves ONLY as watch events.
@@ -421,6 +467,8 @@ export interface LocalPodRuntime {
   pullBackoffUntil?: number
   /** termination: SIGKILL fires at (sigterm + grace) */
   killAt?: number
+  /** synthesized CPU draw from served requests, EMA-decayed (model millicores) */
+  cpuUsedM?: number
 }
 
 export interface NodeSim {
@@ -430,6 +478,8 @@ export interface NodeSim {
   allocatable: { cpuM: number; memMi: number }
   /** sum of requests of pods bound here (derived each tick) */
   allocated: { cpuM: number; memMi: number }
+  /** synthesized live usage from request traffic (derived each tick) */
+  used: { cpuM: number }
   leaseRenewAt: number
   imageCache: Set<string>
   /** serialized: index 0 is the active pull */
@@ -439,6 +489,16 @@ export interface NodeSim {
     syncQueue: Uid[]
     nextSweepAt: number
     runtime: Map<Uid, LocalPodRuntime>
+  }
+  /**
+   * The district's kube-proxy: its OWN copy of the directory, programmed via
+   * its OWN watch registration — so its signage lags the central board by its
+   * courier's pace. Stale-routing windows are real (the delete-race lesson).
+   */
+  proxy: {
+    /** resourceVersion of the slice this district last programmed */
+    programmedRev: number
+    endpoints: EndpointEntry[]
   }
 }
 
@@ -453,8 +513,21 @@ export interface RegistryState {
 }
 
 export interface TrafficState {
-  /** M1 stub: request traffic arrives at M6 */
   reqPerSec: number
+  /**
+   * Deterministic arrivals: reqPerSec × dt accumulates here and dispatches on
+   * whole requests — a seeded interleave, deliberately NOT Poisson-random
+   * (determinism outranks statistical realism; FIDELITY.md).
+   */
+  accumulator: number
+  /** round-robin cursor over the directory's ready doors */
+  rrCursor: number
+  /** requests that reached an open door (lifetime) */
+  served: number
+  /** requests that reached a door no longer serving — the delete-race cost */
+  misrouted: number
+  /** arrivals while no Service existed: nothing to dial */
+  idleNoService: number
 }
 
 export interface ClusterEvent {
@@ -476,6 +549,15 @@ export interface Vitals {
   watchMaxLagRev: number
   imagePullsActive: number
   restartsTotal: number
+  /* -- M6 traffic -- */
+  /** doors the directory currently lists as ready */
+  readyEndpoints: number
+  /** directory board generation (slice generation; 0 = no Service yet) */
+  sliceGeneration: number
+  reqServedTotal: number
+  reqMisroutedTotal: number
+  /** synthesized cluster CPU usage from live traffic, millicores */
+  cpuUsedM: number
 }
 
 /* ---------------------------------------------------------------------------
@@ -496,6 +578,12 @@ export type TraceStop =
   | 'image_pull'
   | 'start_probes'
   | 'endpoints'
+  /* -- delete rail (M6): ordering is the content -- */
+  | 'endpoint_withdraw'
+  | 'sigterm'
+  | 'grace_countdown'
+  | 'sigkill'
+  | 'rs_notices'
   | 'done'
 
 export type TracePlayback = 'step' | 'slow' | 'live'
@@ -587,6 +675,39 @@ export interface TraceRecord {
   autoPaused: boolean
   /** knobs snapshot restored by endTrace() */
   savedKnobs: Knobs
+
+  /* -- delete rail (M6) -- */
+  /** revision of the commit that stamped deletionTimestamp */
+  deleteRev: number
+  /** model time deletionTimestamp was committed */
+  deletedAt: number
+  /** the directory withdrew the door (slice write observed) at this revision */
+  withdrawRev: number
+  /** model time the withdrawal committed — race evidence against sigtermAt */
+  withdrawAt: number
+  /** districts whose signage has programmed a view ≥ withdrawRev */
+  districtsProgrammed: number
+  districtsTotal: number
+  /** model time SIGTERM landed at the door (after any preStop sleep) */
+  sigtermLandedAt: number
+  /** the foreman's SIGKILL backstop time, observed while the runtime lives */
+  killAtObserved: number
+  /** grace seconds remaining before the SIGKILL backstop, live */
+  graceRemainingSec: number
+  /** the app exited before the backstop — SIGKILL renders "not needed" */
+  cleanExit: boolean
+  /** the pod's final 'remove' committed */
+  removed: boolean
+  /** the replacement the ReplicaSet desk filed (name once observed) */
+  replacementName: string
+  /** live traffic existed when the rail armed (else the honest no-traffic variant) */
+  trafficLive: boolean
+  /** requests misrouted since the rail armed */
+  misroutedSince: number
+  /** traffic.misrouted at arm time */
+  misroutedAtStart: number
+  /** preStopSleepSec that would outlast the observed propagation, for "try the fix" */
+  suggestedPreStopSec: number
 }
 
 /* ---------------------------------------------------------------------------
@@ -653,6 +774,16 @@ export interface DeletePodCommand {
   name: string
 }
 
+export interface ApplyServiceCommand {
+  kind: 'ApplyService'
+  name: string
+  port: number
+  /** ingress hostname routed to this service */
+  host: string
+  /** label selector; defaults to the demo app selector */
+  selector?: Record<string, string>
+}
+
 export type Command =
   | ApplyPodCommand
   | ApplyDeploymentCommand
@@ -661,6 +792,7 @@ export type Command =
   | RollbackImageCommand
   | SetLimitCommand
   | DeletePodCommand
+  | ApplyServiceCommand
 
 /* ---------------------------------------------------------------------------
  * Knobs — every one has a visible city effect (KNOB-AUDIT discipline).
@@ -805,6 +937,8 @@ export interface FlowEmit {
   route: string
   kind: FlowKind
   count?: number
+  /** override particle colour (e.g. the red misroute flick) */
+  color?: number
 }
 
 export interface SimApi {

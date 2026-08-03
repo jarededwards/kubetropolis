@@ -20,5 +20,11 @@ export function traceStopBit(stop: TraceStop): number {
     case 'start_probes': return 1 << 9
     case 'endpoints': return 1 << 10
     case 'done': return 1 << 11
+    /* delete rail (M6) */
+    case 'endpoint_withdraw': return 1 << 14
+    case 'sigterm': return 1 << 15
+    case 'grace_countdown': return 1 << 16
+    case 'sigkill': return 1 << 17
+    case 'rs_notices': return 1 << 18
   }
 }

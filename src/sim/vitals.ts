@@ -1,12 +1,16 @@
 /* Kubetropolis sim — derived stage: allocations, vitals, event trim. */
 
 import type { PodObj, SimState } from '../core/types'
+import { getSlice } from './objects'
 
 export function derive(state: SimState): void {
-  // Node allocations from committed bindings.
+  // Node allocations from committed bindings; usage from the traffic EMAs.
   for (const node of state.nodes) {
     node.allocated.cpuM = 0
     node.allocated.memMi = 0
+    let used = 0
+    for (const rt of node.kubelet.runtime.values()) used += rt.cpuUsedM ?? 0
+    node.used.cpuM = used
   }
   let podsTotal = 0
   let podsRunning = 0
@@ -42,7 +46,16 @@ export function derive(state: SimState): void {
   }
 
   let pulls = 0
-  for (const node of state.nodes) pulls += node.pulls.length
+  let cpuUsedM = 0
+  for (const node of state.nodes) {
+    pulls += node.pulls.length
+    cpuUsedM += node.used.cpuM
+  }
+
+  const slice = getSlice(state)
+  const readyEndpoints = slice
+    ? slice.spec.endpoints.reduce((n, e) => n + (e.conditions.ready ? 1 : 0), 0)
+    : 0
 
   state.vitals = {
     podsTotal,
@@ -54,5 +67,10 @@ export function derive(state: SimState): void {
     watchMaxLagRev: maxLag,
     imagePullsActive: pulls,
     restartsTotal: restarts,
+    readyEndpoints,
+    sliceGeneration: slice?.generation ?? 0,
+    reqServedTotal: state.traffic.served,
+    reqMisroutedTotal: state.traffic.misrouted,
+    cpuUsedM: Math.round(cpuUsedM),
   }
 }

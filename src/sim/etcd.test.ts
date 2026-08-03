@@ -31,8 +31,8 @@ describe('etcd — the vault', () => {
     sim.apply(samples.pod('watched'))
     stepUntil(sim, (s) => s.etcd.log.some((r) => r.kind === 'Pod'), 30, 'pod committed')
     const podWatchers = sim.state.api.watchers.filter((w) => w.kinds.includes('Pod'))
-    // sched + ctl.replicaset + one kubelet per node
-    expect(podWatchers.length).toBe(2 + sim.state.nodes.length)
+    // sched + ctl.replicaset + ctl.endpointslice (M6) + one kubelet per node
+    expect(podWatchers.length).toBe(3 + sim.state.nodes.length)
     for (const w of podWatchers) {
       expect(w.backlog.length).toBeGreaterThan(0)
     }

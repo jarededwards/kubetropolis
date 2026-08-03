@@ -14,6 +14,7 @@
 import { CLAIM_VALUES } from '../core/claims'
 import type { LocalPodRuntime, NodeSim, PodObj, SimState } from '../core/types'
 import { submit } from './apiserver'
+import { flakeBadWindow } from './traffic'
 import {
   clone,
   CRASH_AFTER_SECONDS,
@@ -327,11 +328,12 @@ function stepTimers(state: SimState, node: NodeSim, dt: number): void {
     // probes on their period
     if (state.now >= rt.nextProbeAt) {
       rt.nextProbeAt = state.now + pod.spec.probes.readiness.periodSeconds
-      const flaky = state.knobs.chaosReadinessFlake
       // Flake = 40-second bad windows alternating with 40 good — long enough
       // for failureThreshold consecutive misses at the 10s period, so the
       // CLOSED sign flips both ways, deterministically, with zero restarts.
-      const readinessOk = !flaky || Math.floor(state.now / 40) % 2 === 0
+      // Shared with the data plane: a flaking app fails its USERS in the same
+      // windows it fails its probes (traffic.flakeBadWindow).
+      const readinessOk = !flakeBadWindow(state)
       if (readinessOk) {
         rt.readinessFails = 0
         rt.readinessSuccesses += 1
@@ -407,7 +409,12 @@ function beginTermination(state: SimState, node: NodeSim, pod: PodObj, rt: Local
   // but never extends the deadline. A preStop still running at expiry earns
   // exactly one 2-second extension. "A preStop sleep buys me extra time" is
   // the misconception; what it buys is a quieter SIGTERM.
-  rt.preStopUntil = t0 + pod.spec.preStopSleepSec
+  //
+  // FIDELITY (modeled): the knob applies at TERMINATION time so "try the fix →
+  // re-run" teaches instantly. Real preStop lives in the pod spec at creation;
+  // changing it is a template edit, and a template edit is a rollout.
+  const preStopSec = Math.max(pod.spec.preStopSleepSec, state.knobs.preStopSleepSec)
+  rt.preStopUntil = t0 + preStopSec
   rt.sigtermAt = rt.preStopUntil
   const graceExpiry = t0 + pod.spec.tgps
   rt.killAt = rt.preStopUntil >= graceExpiry ? graceExpiry + 2 : graceExpiry

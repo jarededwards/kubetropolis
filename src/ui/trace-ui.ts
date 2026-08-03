@@ -14,7 +14,7 @@ import { presentedStages } from '../core/trace-presentation'
 import type { TracePlayback, TraceRecord, TraceStop } from '../core/types'
 import { traceStopBit } from '../core/model-helpers'
 import { narration } from './narration'
-import { TRACE_COPY, traceFocusId } from './trace-copy'
+import { traceCopyFor, traceFocusId } from './trace-copy'
 import type { UiContext, UiModule } from './uikit'
 import { el } from './uikit'
 
@@ -26,6 +26,7 @@ export function createTraceUi(ctx: UiContext): UiModule {
   let lastFocus = ''
   let lastLine = ''
   let acc = 0
+  let fixShown = false
 
   const card = narration()
 
@@ -60,6 +61,25 @@ export function createTraceUi(ctx: UiContext): UiModule {
     text: '✕',
     title: 'Close the trace (Esc)',
     on: { click: () => stop() },
+  })
+  // The lesson closes itself: re-run the delete with a preStop sleep longer
+  // than the observed propagation and watch the misroute counter stay at zero.
+  const fixBtn = el('button', {
+    class: 'pg-btn tour-btn tour-btn--fix',
+    text: 'try the fix',
+    title: 'Re-run with a preStop sleep longer than the propagation',
+    on: {
+      click: () => {
+        const t = sim.state.trace
+        if (!t) return
+        const fixSec = t.suggestedPreStopSec
+        const playback = t.playback
+        stop()
+        sim.setKnob('preStopSleepSec', fixSec, 'user')
+        bus.emit('toast', { text: `preStopSleepSec → ${fixSec} — re-running the delete`, kind: 'info' })
+        start('delete-pod', playback)
+      },
+    },
   })
 
   function refreshModes(): void {
@@ -105,6 +125,7 @@ export function createTraceUi(ctx: UiContext): UiModule {
     active = true
     viewStop = null
     lastFocus = ''
+    fixShown = false
     document.body.classList.add('pg-tour')
     card.setTransport([prevBtn, ...modeBtns, nextBtn, closeBtn])
     card.show(true)
@@ -131,7 +152,7 @@ export function createTraceUi(ctx: UiContext): UiModule {
       return
     }
     const shown = viewStop ?? t.stop
-    const copy = TRACE_COPY[shown]
+    const copy = traceCopyFor(t, shown)
     const line = copy.line(t)
     if (!force && shown === viewStop && line === lastLine) return
     if (!force && viewStop === null && line === lastLine && lastFocus === traceFocusId(shown, t)) return
@@ -155,6 +176,19 @@ export function createTraceUi(ctx: UiContext): UiModule {
       })),
     )
     lastLine = line
+
+    // The delete rail's closing affordance: only when the race had victims.
+    const offerFix =
+      t.action === 'delete-pod' && t.stop === 'done' && t.trafficLive && t.misroutedSince > 0
+      && t.savedKnobs.preStopSleepSec < t.suggestedPreStopSec
+    if (offerFix && !fixShown) {
+      fixShown = true
+      fixBtn.textContent = `try the fix: preStop ${t.suggestedPreStopSec}s`
+      card.setTransport([prevBtn, ...modeBtns, fixBtn, nextBtn, closeBtn])
+    } else if (!offerFix && fixShown) {
+      fixShown = false
+      card.setTransport([prevBtn, ...modeBtns, nextBtn, closeBtn])
+    }
 
     const focus = traceFocusId(shown, t)
     if (focus !== lastFocus) {

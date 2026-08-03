@@ -28,10 +28,23 @@ import { CLAIM_VALUES } from '../core/claims'
 import type { Bus, Command, Knobs, SimApi, SimState } from '../core/types'
 import { DEFAULT_KNOBS } from '../core/types'
 import { drainWatchers, findPodByName, stepAdmission, stepWatchFanout, submit } from './apiserver'
-import { CONTROLLER_BUDGET, clone, mkDeployment, mkPod, pushEvent, rng01, templateHash, uidSeqOf } from './objects'
+import {
+  CONTROLLER_BUDGET,
+  clone,
+  getService,
+  mkDeployment,
+  mkPod,
+  mkService,
+  pushEvent,
+  rng01,
+  templateHash,
+  uidSeqOf,
+} from './objects'
 import type { ReplicaSetObj } from '../core/types'
 import { reconcileDeployment } from './controllers/deployment'
+import { reconcileEndpointSlice } from './controllers/endpointslice'
 import { reconcileReplicaSet } from './controllers/replicaset'
+import { stepTraffic } from './traffic'
 import { effectiveFsyncMs, stepCompaction, stepEtcdCommits } from './etcd'
 import { stepKubelets } from './kubelet'
 import { applyNodeChaos, stepLeaseRenewals, stepNodeLifecycle } from './nodes'
@@ -68,9 +81,11 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     drainWatchers(state)
 
     // 5 — the desks (deployment before replicaset so a fresh contract can be
-    // worked the same tick it is delivered; nodelifecycle on its own clock)
+    // worked the same tick it is delivered; the directory desk after both so a
+    // readiness change filed today is listed today; nodelifecycle on its clock)
     runController(state, 'deployment', reconcileDeployment)
     runController(state, 'replicaset', reconcileReplicaSet)
+    runController(state, 'endpointslice', reconcileEndpointSlice)
     stepNodeLifecycle(state)
 
     // 6 — zoning
@@ -79,6 +94,9 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     // 7 — foremen
     stepLeaseRenewals(state)
     stepKubelets(state, dt)
+
+    // 8 — the data plane: citizens reach only doors some view says are open
+    stepTraffic(state, dt)
 
     // 9 — chaos & maintenance
     applyNodeChaos(state)
@@ -101,7 +119,7 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
 
   function runController(
     s: SimState,
-    id: 'deployment' | 'replicaset',
+    id: 'deployment' | 'replicaset' | 'endpointslice',
     reconcile: (s2: SimState, uid: string) => void,
   ): void {
     const ctl = s.controllers[id]
@@ -109,7 +127,8 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     // desk that missed (or leaked) an event always gets another look. Jittered
     // via the seeded RNG — deterministic, but desks do not thunder together.
     if (s.now >= ctl.nextResyncAt) {
-      const kind = id === 'deployment' ? 'Deployment' : 'ReplicaSet'
+      const kind =
+        id === 'deployment' ? 'Deployment' : id === 'replicaset' ? 'ReplicaSet' : 'Service'
       for (const o of s.etcd.objects.values()) {
         if (o.kind === kind && !ctl.workqueue.includes(o.uid)) ctl.workqueue.push(o.uid)
       }
@@ -149,8 +168,9 @@ export function createSim(bus: Bus, opts?: SimOptions): SimApi {
     startTrace(action, playback) {
       const def = actionFor(action)
       if (!def?.traceable) return
-      armTrace(state, action, def.subject, playback)
-      intake.push(def.mkCommand())
+      const subject = def.subjectFor?.(state) ?? def.subject
+      armTrace(state, action, subject, playback)
+      intake.push(def.mkCommand(state))
     },
     traceNext() {
       resumeTraceStep(state)
@@ -300,6 +320,27 @@ function runCommand(state: SimState, command: Command): void {
       }
     }
     pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to roll back')
+    return
+  }
+
+  if (command.kind === 'ApplyService') {
+    if (getService(state)) {
+      pushEvent(state, 'Normal', 'Unchanged', command.name, 'the shops already have a number')
+      return
+    }
+    const svc = mkService(state, command.name, {
+      port: command.port,
+      host: command.host,
+      selector: command.selector,
+    })
+    submit(state, 'create', svc, 'kubectl')
+    pushEvent(
+      state,
+      'Normal',
+      'Applied',
+      svc.name,
+      `service manifest submitted — ${command.host} will list open doors only`,
+    )
     return
   }
 

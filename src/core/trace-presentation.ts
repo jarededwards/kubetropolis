@@ -42,8 +42,28 @@ export const PRESENTED_DEPLOYMENT_STAGES: readonly PresentedTraceStage[] = [
   ...PRESENTED_TRACE_STAGES.slice(4),
 ]
 
+/**
+ * The delete rail (M6). Ordering is the content: the directory withdrawal and
+ * the foreman's knock leave the watch board at the SAME moment, and nothing
+ * orders them — the rail presents them in canonical order while the misroute
+ * counter runs. preStop exists because of this pair.
+ */
+export const PRESENTED_DELETE_STAGES: readonly PresentedTraceStage[] = [
+  { stop: 'client', label: 'CLIENT' },
+  { stop: 'etcd_commit', label: 'LEDGER' },
+  { stop: 'watch_fanout', label: 'FANOUT' },
+  { stop: 'endpoint_withdraw', label: 'WITHDRAW' },
+  { stop: 'sigterm', label: 'SIGTERM' },
+  { stop: 'grace_countdown', label: 'GRACE' },
+  { stop: 'sigkill', label: 'SIGKILL' },
+  { stop: 'rs_notices', label: 'RS DESK' },
+  { stop: 'done', label: 'RECEIPT' },
+]
+
 export function presentedStages(action: string): readonly PresentedTraceStage[] {
-  return action === 'apply-deployment' ? PRESENTED_DEPLOYMENT_STAGES : PRESENTED_TRACE_STAGES
+  if (action === 'apply-deployment') return PRESENTED_DEPLOYMENT_STAGES
+  if (action === 'delete-pod') return PRESENTED_DELETE_STAGES
+  return PRESENTED_TRACE_STAGES
 }
 
 /** Statement timings run on the deliberately stretched model clock. */

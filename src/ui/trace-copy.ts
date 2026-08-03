@@ -132,6 +132,97 @@ export const TRACE_COPY: Record<TraceStop, TraceStopCopy> = {
       `trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)} ${UNIT} · events ${t.eventsSince}`,
     hint: 'Try the Deployment next — one paper that becomes four.',
   },
+
+  /* -- delete rail (M6). Ordering is the content. -- */
+  endpoint_withdraw: {
+    title: 'The directory withdraws the door',
+    body: (t) =>
+      t.trafficLive
+        ? 'The directory desk saw the notice and filed a new edition without this door. Every district signage now has to copy it — one courier each, none of them first.'
+        : 'No caller was ever routed here: no directory listed this door, so there is nothing to withdraw. With a Service and live traffic, this stop is a race you can lose.',
+    line: (t) =>
+      t.trafficLive
+        ? `districts updated ${t.districtsProgrammed}/${t.districtsTotal} · misrouted so far ${t.misroutedSince}`
+        : 'no Service listed this pod · misrouted 0',
+  },
+  sigterm: {
+    title: 'The foreman knocks',
+    body: (t) =>
+      t.savedKnobs.preStopSleepSec > 0
+        ? `Before the knock, the building got its preStop window — ${t.savedKnobs.preStopSleepSec} ${UNIT} of answering calls while the directories caught up. The countdown was already running: the window spends the grace period, it does not extend it.`
+        : 'SIGTERM lands the moment the foreman reads the notice. The withdrawal is still propagating on other roads — callers the signage still routes here now reach a door that has stopped answering.',
+    line: (t) =>
+      `SIGTERM at ${t.sigtermLandedAt.toFixed(1)} ${UNIT} · withdrawal ${t.withdrawRev > 0 ? 'filed' : 'in flight'} · misrouted ${t.misroutedSince}`,
+  },
+  grace_countdown: {
+    title: 'The grace period is a deadline, not a courtesy',
+    body: () =>
+      `The app has ${GRACE.defaultGraceSeconds} ${UNIT} from the notice — not from the knock — to finish its work and leave. A well-behaved app exits early; the backstop exists for the other kind.`,
+    line: (t) => `grace remaining ${t.graceRemainingSec.toFixed(1)} ${UNIT} · backstop armed`,
+  },
+  sigkill: {
+    title: 'The backstop',
+    body: (t) =>
+      t.cleanExit
+        ? 'Not needed — the app exited clean, well inside its grace. SIGKILL is the tool the city hopes never to use.'
+        : 'The grace expired with the app still standing, so the kernel ends it. Nothing negotiates with SIGKILL.',
+    line: (t) => (t.cleanExit ? 'exited clean · SIGKILL skipped' : 'SIGKILL delivered · exit forced'),
+  },
+  rs_notices: {
+    title: 'The desk never mourns',
+    body: (t) =>
+      t.replicaSetUid
+        ? `The contract still says ${t.desiredReplicas || 'N'}; the street now counts one fewer. The desk files a replacement permit before the rubble settles — grief is not in its instruction set.`
+        : 'This building had no owner. No contract counts it, so nothing files a replacement — deleted means gone.',
+    line: (t) =>
+      t.replicaSetUid
+        ? `replacement ${t.replacementName || '…'} filed · trips ${t.trips}`
+        : 'no owner · no replacement',
+  },
+}
+
+/** Delete-rail overrides for the stops the rails share. */
+const DELETE_COPY: Partial<Record<TraceStop, TraceStopCopy>> = {
+  client: {
+    title: 'You are just a client',
+    body: (t) =>
+      `kubectl asks City Hall to delete ${t.subject}. It does not visit the district, and it will not swing the wrecking ball — it files a request, like every other request.`,
+    line: (t) => `victim ${t.subject} · misrouted before this: ${t.misroutedAtStart}`,
+    hint: 'Watch the misroute counter — this rail is about a race.',
+  },
+  etcd_commit: {
+    title: 'A notice, not a demolition',
+    body: () =>
+      `Delete does not remove the row. It stamps a demolition notice — deletionTimestamp — and grants ${GRACE.defaultGraceSeconds} ${UNIT} of grace. The building still stands; the truth now says it is leaving.`,
+    line: (t) => `notice at revision ${t.deleteRev} · grace ${GRACE.defaultGraceSeconds} ${UNIT} · trips ${t.trips}`,
+  },
+  watch_fanout: {
+    title: 'Two couriers, one moment, no order',
+    body: () =>
+      'The notice fans out like every commit. The directory desk gets a copy; the district foreman gets a copy — at the SAME moment, on different roads, and nothing anywhere orders their arrival. Everything that goes wrong next comes from that sentence.',
+    line: (t) => `couriers delivered ${t.watchersNotified}/${t.watchersTotal} · deepest satchel ${t.maxBacklog}`,
+  },
+  done: {
+    title: 'The race, on paper',
+    body: (t) =>
+      t.trafficLive
+        ? t.misroutedSince > 0
+          ? `${t.misroutedSince} callers reached a door that had stopped answering, because withdrawal and shutdown raced and shutdown won. A preStop sleep longer than the propagation — about ${t.suggestedPreStopSec} ${UNIT} here — keeps the door answering while the directories catch up.`
+          : 'Zero callers lost: the door kept answering through its preStop window while every directory caught up. This is the fix, working.'
+        : 'No traffic flowed, so the race had no victims this time. Apply a Service, put callers on the road, and run this rail again.',
+    line: (t) =>
+      `misrouted ${t.misroutedSince} · replacement ${t.replacementName || '—'} · trips ${t.trips} · elapsed ${(t.stopAt - t.startedAt).toFixed(1)} ${UNIT}`,
+    hint: 'Try the fix: re-run with a preStop sleep longer than the propagation.',
+  },
+}
+
+/** Rail-aware copy: the delete rail overrides the stops the rails share. */
+export function traceCopyFor(t: TraceRecord, stop: TraceStop): TraceStopCopy {
+  if (t.action === 'delete-pod') {
+    const override = DELETE_COPY[stop]
+    if (override) return override
+  }
+  return TRACE_COPY[stop]
 }
 
 /** Where the camera goes at each stop (registered component ids only). */
@@ -150,9 +241,14 @@ export function traceFocusId(stop: TraceStop, t: TraceRecord): string {
     case 'kubelet_sees': return letter ? `node.${letter}.foreman` : 'zoning.office'
     case 'image_pull': return t.pullSkipped && letter ? `node.${letter}.foreman` : 'harbor.crane'
     case 'start_probes': return letter ? `node.${letter}.watertower` : 'overview.balloon'
-    // no Service exists at M3 — pull back: nothing anywhere routes here.
-    // (service.directory becomes a component at M6 and takes this stop over.)
-    case 'endpoints': return t.serviceListed ? 'cityhall.watchboard' : 'overview.balloon'
-    case 'done': return 'overview.balloon'
+    // With a Service standing, the directory board takes this stop over (M6).
+    case 'endpoints': return t.serviceListed ? 'service.directory' : 'overview.balloon'
+    /* -- delete rail: the camera follows the actual building where it can -- */
+    case 'endpoint_withdraw': return t.trafficLive ? 'service.directory' : 'overview.balloon'
+    case 'sigterm': return 'pod.traced'
+    case 'grace_countdown': return 'pod.traced'
+    case 'sigkill': return 'pod.traced'
+    case 'rs_notices': return 'inspectors.desk.replicaset'
+    case 'done': return t.action === 'delete-pod' ? 'service.junction' : 'overview.balloon'
   }
 }

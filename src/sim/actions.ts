@@ -10,7 +10,7 @@
  */
 
 import type { ActionKind, Command, PodObj, SimState } from '../core/types'
-import { DEMO_IMAGE_V1, DEMO_IMAGE_V2, samples } from './samples'
+import { DEMO_HOST, DEMO_IMAGE_V1, DEMO_IMAGE_V2, samples } from './samples'
 
 /** Deterministic victim: the first shopfront pod by name. */
 export function firstShopfrontPod(state: SimState): PodObj | undefined {
@@ -38,6 +38,8 @@ export interface ActionDef {
   mkCommand(state?: SimState): Command
   /** dynamic kubectl line (e.g. a live victim name); falls back to cmd */
   cmdFor?(state: SimState): string
+  /** dynamic trace subject (e.g. the live victim); falls back to subject */
+  subjectFor?(state: SimState): string
 }
 
 const POD_YAML = `apiVersion: v1
@@ -53,6 +55,31 @@ spec:
         requests: { cpu: 250m, memory: 256Mi }
       readinessProbe:
         httpGet: { path: /healthz, port: 8080 }`
+
+const SERVICE_YAML = `apiVersion: v1
+kind: Service
+metadata:
+  name: shopfront
+  namespace: shops
+spec:
+  selector: { app: shopfront }
+  ports:
+    - port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopfront
+  namespace: shops
+spec:
+  rules:
+    - host: ${DEMO_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: shopfront, port: { number: 80 } }`
 
 const DEPLOYMENT_YAML = `apiVersion: apps/v1
 kind: Deployment
@@ -121,9 +148,9 @@ const CATALOG: ActionDef[] = [
     label: 'Delete a pod',
     cmd: 'kubectl delete pod shopfront-…',
     watch:
-      'The demolition notice and the replacement permit race — the ReplicaSet desk never mourns.',
+      'The demolition notice and the directory withdrawal leave City Hall at the same moment — and race. Count the misrouted callers.',
     subject: 'shopfront',
-    traceable: false,
+    traceable: true,
     mkCommand: (state) => {
       const victim = state ? firstShopfrontPod(state) : undefined
       return samples.deletePod(victim?.name ?? 'shopfront-')
@@ -132,6 +159,18 @@ const CATALOG: ActionDef[] = [
       const victim = firstShopfrontPod(state)
       return `kubectl delete pod ${victim?.name ?? 'shopfront-…'}`
     },
+    subjectFor: (state) => firstShopfrontPod(state)?.name ?? 'shopfront-',
+  },
+  {
+    kind: 'apply-service',
+    label: 'Apply a Service',
+    cmd: 'kubectl apply -f service.yaml',
+    yaml: SERVICE_YAML,
+    watch:
+      'The shops get a phone number, and the number only lists doors that are open.',
+    subject: 'shopfront',
+    traceable: false,
+    mkCommand: () => samples.service(),
   },
 ]
 

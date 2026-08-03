@@ -65,7 +65,14 @@ export function initState(seed: number, knobs: Knobs): SimState {
     },
     nodes: [],
     harbor: { reachable: true, mbps: knobs.registryMBps },
-    traffic: { reqPerSec: knobs.reqPerSec },
+    traffic: {
+      reqPerSec: knobs.reqPerSec,
+      accumulator: 0,
+      rrCursor: 0,
+      served: 0,
+      misrouted: 0,
+      idleNoService: 0,
+    },
     operatorRunning: false,
     podOwners: new Map(),
     events: [],
@@ -81,6 +88,11 @@ export function initState(seed: number, knobs: Knobs): SimState {
       watchMaxLagRev: 0,
       imagePullsActive: 0,
       restartsTotal: 0,
+      readyEndpoints: 0,
+      sliceGeneration: 0,
+      reqServedTotal: 0,
+      reqMisroutedTotal: 0,
+      cpuUsedM: 0,
     },
   }
 
@@ -104,21 +116,28 @@ export function initState(seed: number, knobs: Knobs): SimState {
       powered: true,
       allocatable: { cpuM: NODE_CPU_M, memMi: NODE_MEM_MI },
       allocated: { cpuM: 0, memMi: 0 },
+      used: { cpuM: 0 },
       leaseRenewAt: 0,
       imageCache: new Set(),
       pulls: [],
       kubelet: { sentRev: 0, syncQueue: [], nextSweepAt: 0, runtime: new Map() },
+      proxy: { programmedRev: 0, endpoints: [] },
     }
     state.nodes.push(nodeSim)
   }
 
-  // Subscribers — one desk, one road, one watch position each.
+  // Subscribers — one desk, one road, one watch position each. Every district
+  // holds TWO registrations: its foreman (pods) and its signage box (the
+  // directory) — each courier walks at its own seeded pace, which is why two
+  // districts never learn the same edition at the same instant.
   registerWatcher(state, 'sched', ['Pod'])
   registerWatcher(state, 'ctl.deployment', ['Deployment', 'ReplicaSet'])
   registerWatcher(state, 'ctl.replicaset', ['ReplicaSet', 'Pod'])
+  registerWatcher(state, 'ctl.endpointslice', ['Service', 'Pod', 'EndpointSlice'])
   registerWatcher(state, 'ctl.nodelifecycle', ['Node', 'Lease'])
   for (const node of state.nodes) {
     registerWatcher(state, `kubelet.${node.id}`, ['Pod'])
+    registerWatcher(state, `proxy.${node.id}`, ['EndpointSlice'])
   }
 
   return state
