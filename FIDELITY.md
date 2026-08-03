@@ -28,4 +28,24 @@ imply behavior this model does not have.
 The scheduler is presented as "a subset of the scheduling framework": three
 filter plugins and three score plugins carrying their honest upstream names.
 
+## Modeled simplifications (M1)
+
+- **Status subresource as merge semantics.** Writes are split into `update`
+  (merges spec/labels/generation) and `updateStatus` (merges status);
+  `deletionTimestamp` is irreversible. This stands in for the real status
+  subresource plus optimistic concurrency — there are no 409 conflicts or
+  client retries in the model.
+- **Desks read the vault directly.** Controllers wake on courier deliveries
+  (the honest hop) but read current state rather than a lagged informer
+  cache; their in-flight expectations are pruned in that same read frame.
+- **Scheduler**: one pod per cycle; assumed-pods reserve cache; binding is a
+  plain spec write, not the pods/binding subresource.
+- **ReplicaSet victim ranking** is newest-first by uid (the real ranking
+  weighs readiness, node spread, and pod-deletion-cost); creates are filed in
+  capped batches of 3 rather than real slow-start doubling.
+- **etcd quorum** is abstracted into one fsync latency under a fixed leader;
+  compaction forces lagging watchers to relist, and healthy watchers advance
+  by bookmarks.
+- **One container per pod** (plus an optional init container, unwired at M1).
+
 *This file grows as the model does; it is enforced by the claims spine from M3.*

@@ -18,16 +18,15 @@ domain content retained inert until the noted milestone replaces it).
 | index.html | A | Structure kept (theme bootstrap, mounts, boot screen); all copy/marks replaced |
 
 ## src/core (all V unless noted)
-types.ts **(TV → M1: SimState/Knobs replaced with Kubernetes contract)** ·
+types.ts **(A @M1: Kubernetes contract replaced the Postgres SimState/Knobs; TV-legacy block holds the constants/TableDef the TV world still needs until M2)** ·
 bus.ts · registry.ts · timebase.ts(+test) · theme.ts(+test) **(TV palette → M2 retint)** ·
 themes.ts(+test) **(A: theme localStorage key renamed)** · util.ts(+test) ·
 beveled-box.ts(+test) · build.ts **(A: define names)** ·
-city-route.ts(+test) · claims.ts **(TV → M1: Postgres claims emptied)** ·
+city-route.ts(+test) · claims.ts **(A @M1: rewritten — Kubernetes claims registry, mechanism inherited)** ·
 catalog.ts **(TV → M2: Postgres table catalog, required by the TV layout.ts)** ·
-destinations.ts(+test) · model-helpers.ts · route-ids.ts · trace-presentation.ts
+destinations.ts(+test) · model-helpers.ts · route-ids.ts · trace-presentation.ts **(A @M1: K8s apply-journey stops)**
 
-## src/spine (TV → M1: Postgres machine-walk data imported by the TV claims.ts)
-machine-comparison.ts · machine-index-walk.ts
+## src/spine — deleted at M1 (only the Postgres claims imported it)
 
 ## src/engine
 renderer.ts(+test) **(A-light: environment texture name)** · camera.ts(+camera-controls.test) **(A: imports ../world/plan)** ·

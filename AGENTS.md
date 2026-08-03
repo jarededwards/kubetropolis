@@ -33,3 +33,9 @@ screenshot (below).
 `npm run dev` → http://localhost:5173 (vite, host mode). `npm run preview`
 serves the built dist on 4173 — that is the deploy check while the project is
 local-only.
+
+## Debug overlay (M1+)
+Backtick (`) toggles a read-only sim state overlay; `?debug=1` opens with it
+on. Console demo: `KUBETROPOLIS.sim.apply(KUBETROPOLIS.samples.deployment())`,
+then watch pods walk Pending → Running. Also `samples.pod()`,
+`samples.scale(n)`, `samples.deletePod(name)`.

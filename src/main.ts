@@ -32,12 +32,13 @@ import type { ComponentDef, FlowRequest, WorldContext, WorldModule } from './cor
 import { createRenderer } from './engine/renderer'
 import { createCameraRig } from './engine/camera'
 
-import { createSim } from './sim/model'
+import { createSim, samples } from './sim/model'
 
 import { createGround } from './world/ground'
 import { createSky } from './world/sky'
 
 import { BOOT_STEPS, failBoot, finishBoot, presentBootStep } from './ui/boot'
+import { createDebugOverlay } from './ui/debug-overlay'
 
 const bootEl = document.getElementById('boot')
 const bootFill = document.getElementById('boot-fill')
@@ -139,6 +140,9 @@ async function boot(): Promise<void> {
   })
 
   bus.on('sim:reset', () => sim.reset())
+  bus.on('knob', ({ key, value }) => sim.setKnob(key, value as never))
+
+  const overlay = createDebugOverlay()
 
   /* --- resize -------------------------------------------------------------- */
 
@@ -178,8 +182,9 @@ async function boot(): Promise<void> {
     // 3. the city
     for (let i = 0; i < modules.length; i++) modules[i].update(cityDt, s, s.now)
 
-    // 4. draw
+    // 4. draw + the M1 proof surface
     gfx.render(dt, rawDt)
+    overlay.update(s)
   }
 
   await progress(BOOT_STEPS.firstFrame)
@@ -196,6 +201,7 @@ async function boot(): Promise<void> {
     disposed = true
     running = false
     window.removeEventListener('resize', onResize)
+    overlay.dispose()
     timer.disconnect()
     for (const m of modules) m.dispose?.()
     rig.dispose()
@@ -222,6 +228,7 @@ async function boot(): Promise<void> {
   // Handy in the console, and the staging surface tools/shoot.mjs probes.
   const handle = {
     sim,
+    samples,
     registry,
     bus,
     rig,
