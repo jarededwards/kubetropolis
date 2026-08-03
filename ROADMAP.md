@@ -41,8 +41,12 @@ issue tracking if hosting is chosen). Full plan:
       reconcile w/ on-camera delete+self-heal, zoning, rollout w/ undo button,
       closing) on the one narration card; your-turn gating proven; first-run
       invitation chip; byte-identical tour determinism; 239/239 tests.
-- [ ] **M6 — Services, ingress, traffic** — readiness-gated request flows;
-      delete-race trace variant; chapter 6.
+- [x] **M6 — Services, ingress, traffic** *(2026-08-03)* — Service/
+      EndpointSlice + endpointslice desk + per-district proxy views w/ real
+      skewed lag; junction + off-ramp + gantry built; served/misrouted/refused
+      counters; the 9-stop delete rail w/ concurrent WITHDRAW+SIGTERM stops
+      and the try-the-fix preStop button (misroutes 21 → 0, test-asserted);
+      ch6 + rollout-surge + readiness-flake scenarios; 259/259 tests.
 - [ ] **M7 — CRD & operator (core scope; never the cut)** — Lighthouse
       CRD/CR/operator, dark-breakwater moment; chapter 9.
 - [ ] **M8 — Chaos + polish** — drain/kill node, HPA; chapters 7–8; five more
