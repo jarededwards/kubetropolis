@@ -52,9 +52,11 @@ describe('taint-based eviction — the two clocks', () => {
     // Countdowns armed for every pod bound there.
     stepUntil(sim, (s) => s.vitals.evictionsArmed >= before.length, 10 * TICKS_PER_S, 'countdowns armed')
 
-    // Clock 2: the toleration. Pods survive until it expires, then NodeLost.
-    const armedUntil = Math.max(...[...sim.state.evictions.values()])
-    expect(armedUntil - notReadyAt).toBeGreaterThanOrEqual(29)
+    // Clock 2: the toleration. Entries record ARM time; expiry rides the dial.
+    const armedAt = Math.max(...[...sim.state.evictions.values()])
+    // Arming happens inside the same tick the condition flips (pre-advance);
+    // allow the one-step epsilon.
+    expect(armedAt).toBeGreaterThanOrEqual(notReadyAt - 0.1)
     stepUntil(
       sim,
       (s) => pods(s).every((p) => p.spec.nodeName !== victimNode),

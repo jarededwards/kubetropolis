@@ -489,6 +489,25 @@ function runCommand(state: SimState, command: Command): void {
     return
   }
 
+  if (command.kind === 'ForceDeletePod') {
+    const victim = findPodByName(state, command.name)
+    if (!victim) {
+      pushEvent(state, 'Warning', 'NotFound', command.name, 'no such pod to force delete')
+      return
+    }
+    // --force --grace-period=0: the row is removed without the foreman's
+    // confirmation. If that building held state, reality just forked.
+    submit(state, 'remove', clone(victim), 'kubectl')
+    pushEvent(
+      state,
+      'Warning',
+      'ForceDeleted',
+      victim.name,
+      'row removed without the foreman\'s confirmation — if it held state, reality just forked',
+    )
+    return
+  }
+
   if (command.kind === 'UncordonNode') {
     for (const obj of state.etcd.objects.values()) {
       if (obj.kind === 'Node' && obj.name === command.node) {
