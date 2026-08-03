@@ -326,6 +326,25 @@ function runCommand(state: SimState, command: Command): void {
     return
   }
 
+  if (command.kind === 'SetPacing') {
+    for (const obj of state.etcd.objects.values()) {
+      if (obj.kind === 'Deployment' && obj.name === command.deployment) {
+        const next = clone(obj)
+        // Pacing is spec, not template: the contract changes, the buildings
+        // do not — no new pod-template-hash, no rollout (claims:
+        // deploy.rolloutTrigger).
+        next.spec.maxSurgePct = command.maxSurgePct
+        next.spec.maxUnavailablePct = command.maxUnavailablePct
+        submit(state, 'update', next, 'kubectl')
+        pushEvent(state, 'Normal', 'PacingChanged', obj.name,
+          `rollout contract → surge ${command.maxSurgePct}% / unavailable ${command.maxUnavailablePct}%`)
+        return
+      }
+    }
+    pushEvent(state, 'Warning', 'NotFound', command.deployment, 'no such deployment to set pacing on')
+    return
+  }
+
   if (command.kind === 'SetLimit') {
     for (const obj of state.etcd.objects.values()) {
       if (obj.kind === 'Deployment' && obj.name === command.deployment) {

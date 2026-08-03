@@ -861,6 +861,13 @@ export interface ScaleCommand {
   replicas: number
 }
 
+export interface SetPacingCommand {
+  kind: 'SetPacing'
+  deployment: string
+  maxSurgePct: number
+  maxUnavailablePct: number
+}
+
 export interface SetImageCommand {
   kind: 'SetImage'
   deployment: string
@@ -942,6 +949,7 @@ export type Command =
   | ApplyDeploymentCommand
   | ScaleCommand
   | SetImageCommand
+  | SetPacingCommand
   | RollbackImageCommand
   | SetLimitCommand
   | DeletePodCommand
@@ -1693,6 +1701,8 @@ export interface ScenarioChoice {
     /** live-state commands (e.g. force-delete every pod on the dead district) */
     commandsFor?(state: SimState): Command[]
     consequence: string
+    /** one honest line about where this choice diverges from real Kubernetes */
+    fidelity?: string
   }
 }
 
@@ -1710,6 +1720,8 @@ export interface ScenarioRunState {
   decisionAvailable: boolean
   choiceTaken?: string
   consequence?: string
+  /** the choice's honest divergence line, shown small under the consequence */
+  fidelityNote?: string
   endsAt?: number
 }
 

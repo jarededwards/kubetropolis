@@ -15,6 +15,7 @@ import type {
   RollbackImageCommand,
   ScaleCommand,
   SetImageCommand,
+  SetPacingCommand,
   SetLimitCommand,
   SetNodePowerCommand,
   SetOperatorCommand,
@@ -40,6 +41,9 @@ export const samples = {
   },
   setImage(image = DEMO_IMAGE_V2, deployment = 'shopfront'): SetImageCommand {
     return { kind: 'SetImage', deployment, image }
+  },
+  setPacing(maxSurgePct: number, maxUnavailablePct: number, deployment = 'shopfront'): SetPacingCommand {
+    return { kind: 'SetPacing', deployment, maxSurgePct, maxUnavailablePct }
   },
   rollback(deployment = 'shopfront'): RollbackImageCommand {
     return { kind: 'RollbackImage', deployment }

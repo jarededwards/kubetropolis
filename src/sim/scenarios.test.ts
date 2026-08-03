@@ -149,3 +149,65 @@ describe('image-pull-storm', () => {
     expect(v1Ready).toBe(3) // not one open door closed
   })
 })
+
+describe('rollout-surge', () => {
+  it('runs each pacing contract as a real spec write and a real rollout', () => {
+    const sim = mkSim()
+    sim.startScenario('rollout-surge')
+
+    // Phase 1: default contract carries the v2 renovation.
+    stepUntil(
+      sim,
+      (s) => deployments(s)[0]?.spec.template.image === DEMO_IMAGE_V2,
+      1200,
+      'v2 filed under the default contract',
+    )
+    const d1 = deployments(sim.state)[0]!
+    expect(d1.spec.maxSurgePct).toBeGreaterThan(0)
+
+    // Phase 2 (t≈70): the contract itself changes via the API, then v1 returns.
+    stepUntil(
+      sim,
+      (s) => {
+        const d = deployments(s)[0]
+        return d?.spec.maxSurgePct === 0 && d?.spec.maxUnavailablePct === 50
+      },
+      3000,
+      'surge-zero contract filed',
+    )
+    stepUntil(
+      sim,
+      (s) => deployments(s)[0]?.spec.template.image === DEMO_IMAGE_V1,
+      3000,
+      'renovation runs back to v1',
+    )
+    // The surge-zero wave really walks: v1 pods appear while the contract holds.
+    stepUntil(
+      sim,
+      (s) => pods(s).some((p) => p.spec.image === DEMO_IMAGE_V1 && p.status.ready),
+      9000,
+      'a v1 building opens under surge zero',
+    )
+    expect(deployments(sim.state)[0]!.spec.maxSurgePct).toBe(0)
+
+    // Phase 3 (t≈130): 100/0 contract, back to v2, and the wave completes.
+    stepUntil(
+      sim,
+      (s) => {
+        const d = deployments(s)[0]
+        return d?.spec.maxSurgePct === 100 && d?.spec.maxUnavailablePct === 0
+      },
+      9000,
+      'unavailable-zero contract filed',
+    )
+    stepUntil(
+      sim,
+      (s) =>
+        pods(s).filter((p) => p.spec.image === DEMO_IMAGE_V2 && p.status.ready).length >= 3
+        && pods(s).every((p) => p.spec.image === DEMO_IMAGE_V2 || p.deletionTimestamp !== undefined),
+      20000,
+      'v2 completes under unavailable zero',
+    )
+    sim.endScenario()
+  })
+})
