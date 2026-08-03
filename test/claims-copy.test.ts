@@ -135,3 +135,27 @@ describe('claims-spine: copy surfaces', () => {
     }
   })
 })
+
+import { traceCopyFor } from '../src/ui/trace-copy'
+
+describe('the rejection receipt renders clean', () => {
+  it('never nests quotes around the self-quoting apiserver error', () => {
+    const t = {
+      action: 'apply-lighthouse',
+      playback: 'step',
+      stop: 'done',
+      visited: 0,
+      startedAt: 0,
+      stopAt: 0,
+      trips: 1,
+      rejectedError: 'no matches for kind "Lighthouse" in group "harbor.city"',
+    } as unknown as TraceRecord
+    const copy = traceCopyFor(t, 'done')
+    const body = copy.body(t)
+    expect(body).toContain('The desk refused it — no matches for kind "Lighthouse" in group "harbor.city".')
+    expect(body).not.toContain('""')
+    expect(body).not.toContain(': "no matches')
+    const hint = typeof copy.hint === 'function' ? copy.hint(t) : copy.hint
+    expect(hint).toContain('Apply the CRD')
+  })
+})
