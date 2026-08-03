@@ -25,6 +25,9 @@ import { createTourEngine, type TourEngine, type TourEngineEvent } from './tour-
 const HB = CLAIM_VALUES.kubeletHeartbeat
 const PR = CLAIM_VALUES.probes
 const RU = CLAIM_VALUES.rollingUpdate
+const NM = CLAIM_VALUES.nodeMonitor
+const TL = CLAIM_VALUES.tolerations
+const HP = CLAIM_VALUES.hpa
 
 export const CHAPTERS: readonly TourChapter[] = [
   {
@@ -172,6 +175,59 @@ export const CHAPTERS: readonly TourChapter[] = [
       prompt: 'Fail the probes yourself. Watch the sign, not the wreckers.',
       arm: 'flake',
       done: 'Zero restarts. The building was never in danger — only unlisted.',
+    },
+  },
+  {
+    id: 'selfheal',
+    title: 'How long nothing happens',
+    body:
+      'We are about to cut power to a district, and the first lesson is patience. The '
+      + `foreman's lease stops renewing; after a ${NM.graceSeconds}-second grace City Hall marks the `
+      + 'district Unknown and posts the unreachable taints. The buildings then stand — every '
+      + `Pod carries a ${TL.defaultSeconds}-second toleration it never asked for. This chapter turns that `
+      + 'dial down to thirty so you can watch the whole arc: countdowns, NodeLost, and the '
+      + 'contract rebuilding in districts that still have lights.',
+    focus: 'node.b.gate',
+    duration: 44,
+    ensureDeployment: true,
+    knobs: { unreachableTolerationSec: 30 },
+    at: [[6, { chaosNodeFail: 'node-b' }]],
+    look: [
+      [16, 'inspectors.office'],
+      [26, 'cityhall.permitdesk'],
+      [36, 'node.a.gate'],
+    ],
+    yourTurn: {
+      prompt: 'Restore the power. Watch the countdowns cancel and the taints lift.',
+      arm: 'restore',
+      done: 'Heartbeats resume, the taints lift, and nothing that was rebuilt moves back — the city does not undo work.',
+    },
+  },
+  {
+    id: 'hpa',
+    title: 'One division, every fifteen seconds',
+    body:
+      `The autoscaler desk performs a single division on a timer: usage over target, every ${HP.syncSeconds} `
+      + 'model seconds, times the current replicas, rounded up. Rush-hour traffic pushes the '
+      + `ratio past the ±${HP.tolerancePct}% deadband and the desk edits exactly one number on the `
+      + 'Deployment — that is everything it is permitted to do. The city turns that edit into '
+      + 'buildings.',
+    focus: 'inspectors.office',
+    duration: 40,
+    ensureDeployment: true,
+    knobs: { hpaEnabled: true, hpaTargetCpuPct: 50, hpaMax: 10, reqPerSec: 220 },
+    act: [[1, 'apply-service']],
+    look: [
+      [12, 'service.junction'],
+      [22, 'inspectors.office'],
+      [32, 'node.c.gate'],
+    ],
+    yourTurn: {
+      prompt: `Drop the traffic — and watch the ${HP.stabilizationSeconds}-second window refuse to panic.`,
+      arm: 'calm',
+      done:
+        'Scale-up was eager; scale-down waits out the window\'s highest recommendation. '
+        + 'Flapping is more expensive than patience.',
     },
   },
   {
@@ -455,6 +511,38 @@ export function createTour(ctx: UiContext): UiModule {
           on: {
             click: () => {
               sim.setKnob('chaosReadinessFlake', true)
+              engine.satisfy('performed')
+              lastPaintKey = ''
+            },
+          },
+        }),
+      )
+    }
+    if (ch.yourTurn?.arm === 'restore' && engine.armed && !engine.turnDone) {
+      nodes.push(
+        el('button', {
+          class: 'pg-btn',
+          text: 'restore power',
+          title: 'The district comes back; armed countdowns cancel',
+          on: {
+            click: () => {
+              sim.apply(samples.nodePower('node-b', true))
+              engine.satisfy('performed')
+              lastPaintKey = ''
+            },
+          },
+        }),
+      )
+    }
+    if (ch.yourTurn?.arm === 'calm' && engine.armed && !engine.turnDone) {
+      nodes.push(
+        el('button', {
+          class: 'pg-btn',
+          text: 'drop the traffic',
+          title: 'reqPerSec → 20; the stabilization window holds the line',
+          on: {
+            click: () => {
+              sim.setKnob('reqPerSec', 20)
               engine.satisfy('performed')
               lastPaintKey = ''
             },

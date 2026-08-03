@@ -21,7 +21,7 @@ const STEP = MODEL_STEP_SECONDS
 
 describe('tour chapters', () => {
   it('obey the chapter law: ≤45 model-s, real focus ids, wired actions', () => {
-    expect(CHAPTERS.length).toBe(8)
+    expect(CHAPTERS.length).toBe(10)
     const ids = new Set<string>()
     for (const ch of CHAPTERS) {
       expect(ids.has(ch.id)).toBe(false)
@@ -217,8 +217,10 @@ describe('tour binder', () => {
       () => bus.emit('trace:open', { source: 'keyboard' }), // ch4
       () => handle.satisfy(), // ch5 rollback (button-equivalent)
       () => handle.satisfy(), // ch6 flake (button-equivalent)
-      () => handle.satisfy(), // ch7 operator unstaff (button-equivalent)
-      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch8 → finishes
+      () => handle.satisfy(), // ch7 restore power (button-equivalent)
+      () => handle.satisfy(), // ch8 calm traffic (button-equivalent)
+      () => handle.satisfy(), // ch9 operator unstaff (button-equivalent)
+      () => bus.emit('scenario:open', { source: 'keyboard' }), // ch10 → finishes
     ]
 
     let stopped = false
@@ -228,7 +230,7 @@ describe('tour binder', () => {
       drive(CHAPTERS[chapter].duration + 1.5)
       expect(handle.state().armed, `ch${chapter + 1} armed`).toBe(true)
       expect(card.visible).toBe(true)
-      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/8`)
+      expect(card.root.textContent).toContain(`CHAPTER ${chapter + 1}/10`)
       satisfactions[chapter]()
       tour.update(STEP, 0)
       if (chapter < CHAPTERS.length - 1) {
