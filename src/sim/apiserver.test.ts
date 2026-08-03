@@ -32,9 +32,10 @@ describe('API server — the permit hall', () => {
     expect(pod.spec.probes.readiness.failureThreshold).toBe(CLAIM_VALUES.probes.failureThreshold)
     expect(pod.spec.probes.liveness.periodSeconds).toBe(CLAIM_VALUES.probes.periodSeconds)
 
+    // Real DefaultTolerationSeconds injects NoExecute tolerations (fidelity B3b).
     expect(pod.spec.tolerations).toEqual([
-      { key: 'node.kubernetes.io/not-ready', seconds: CLAIM_VALUES.tolerations.defaultSeconds },
-      { key: 'node.kubernetes.io/unreachable', seconds: CLAIM_VALUES.tolerations.defaultSeconds },
+      { key: 'node.kubernetes.io/not-ready', effect: 'NoExecute', seconds: CLAIM_VALUES.tolerations.defaultSeconds },
+      { key: 'node.kubernetes.io/unreachable', effect: 'NoExecute', seconds: CLAIM_VALUES.tolerations.defaultSeconds },
     ])
 
     expect(pod.spec.tgps).toBe(CLAIM_VALUES.termination.defaultGraceSeconds)

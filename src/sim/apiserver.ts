@@ -21,7 +21,7 @@ import type {
   WatchReg,
 } from '../core/types'
 import { proposeWrite } from './etcd'
-import { uidSeqOf } from './objects'
+import { rng01, uidSeqOf } from './objects'
 
 /** Enter the permit hall. kubectl, desks, and foremen all queue here alike. */
 export function submit(state: SimState, verb: ApiVerb, obj: K8sObject, source: ComponentId): void {
@@ -34,6 +34,11 @@ export function registerWatcher(state: SimState, subscriber: ComponentId, kinds:
     kinds,
     sentRev: state.etcd.revision,
     backlog: [],
+    // A3: every courier walks its own road at its own (seeded, deterministic)
+    // pace, ≥1× base latency — so two subscribers observe the SAME commit at
+    // DIFFERENT model times. The delete-race lesson depends on this skew.
+    latencyFactor: 1 + rng01(state) * 0.5,
+    nextBookmarkAt: 0,
     needsRelist: false,
   }
   state.api.watchers.push(reg)
@@ -86,11 +91,14 @@ function stampDefaults(state: SimState, req: ApiRequest): void {
     `probes defaulted: period ${k.readinessPeriodSec}s, failureThreshold ${k.failureThreshold}`,
   )
 
+  // B3b: the real DefaultTolerationSeconds admission plugin injects NoExecute
+  // tolerations — which therefore do NOT tolerate the NoSchedule taint a dead
+  // node also carries. Key-only matching would re-open scheduling onto it.
   pod.spec.tolerations = [
-    { key: 'node.kubernetes.io/not-ready', seconds: k.unreachableTolerationSec },
-    { key: 'node.kubernetes.io/unreachable', seconds: k.unreachableTolerationSec },
+    { key: 'node.kubernetes.io/not-ready', effect: 'NoExecute', seconds: k.unreachableTolerationSec },
+    { key: 'node.kubernetes.io/unreachable', effect: 'NoExecute', seconds: k.unreachableTolerationSec },
   ]
-  req.mutations.push(`tolerations injected: not-ready/unreachable ${k.unreachableTolerationSec}s`)
+  req.mutations.push(`tolerations injected: not-ready/unreachable NoExecute ${k.unreachableTolerationSec}s`)
 
   pod.spec.tgps = k.tgpsSec
   req.mutations.push(`terminationGracePeriodSeconds defaulted to ${k.tgpsSec}`)
@@ -110,8 +118,10 @@ function stampDefaults(state: SimState, req: ApiRequest): void {
 
 export function stepWatchFanout(state: SimState, committed: ChangeRecord[]): void {
   if (committed.length === 0) return
-  const visibleAt = state.now + state.knobs.watchLatencyMs / 1000
+  const baseSec = state.knobs.watchLatencyMs / 1000
   for (const w of state.api.watchers) {
+    // One commit, N couriers, N distinct roads — each at its own pace (A3).
+    const visibleAt = state.now + baseSec * w.latencyFactor
     for (const rec of committed) {
       if (w.kinds.includes(rec.kind)) w.backlog.push({ rec, visibleAt })
     }
@@ -121,7 +131,12 @@ export function stepWatchFanout(state: SimState, committed: ChangeRecord[]): voi
 export function drainWatchers(state: SimState): void {
   for (const w of state.api.watchers) {
     if (w.needsRelist) {
-      relist(state, w)
+      // A relist is a full LIST — a courier hauling the whole box, slower
+      // than any single delivery (A1).
+      if (w.relistAt === undefined) {
+        w.relistAt = state.now + (state.knobs.watchLatencyMs / 1000) * 2 * w.latencyFactor
+      }
+      if (state.now >= w.relistAt) relist(state, w)
       continue
     }
     while (w.backlog.length > 0 && w.backlog[0].visibleAt <= state.now) {
@@ -129,10 +144,14 @@ export function drainWatchers(state: SimState): void {
       w.sentRev = rec.rev
       deliver(state, w.subscriber, rec)
     }
-    // Watch bookmarks: an idle subscriber's position advances even without
-    // events for its kinds, so it never falls behind compaction while healthy.
-    if (w.backlog.length === 0 && w.sentRev < state.etcd.revision) {
-      w.sentRev = state.etcd.revision
+    // Watch bookmarks (A1): idle subscribers advance PERIODICALLY (~60 model
+    // s), not instantly — real bookmarks are roughly once a minute and
+    // clients may not assume any interval (claims: watch.bookmarks).
+    if (state.now >= w.nextBookmarkAt) {
+      w.nextBookmarkAt = state.now + CLAIM_VALUES.modelWatch.bookmarkSeconds
+      if (w.backlog.length === 0 && w.sentRev < state.etcd.revision) {
+        w.sentRev = state.etcd.revision
+      }
     }
   }
 }
@@ -141,6 +160,7 @@ export function drainWatchers(state: SimState): void {
 function relist(state: SimState, w: WatchReg): void {
   w.backlog = []
   w.needsRelist = false
+  w.relistAt = undefined
   w.sentRev = state.etcd.revision
   for (const obj of state.etcd.objects.values()) {
     if (!w.kinds.includes(obj.kind)) continue
